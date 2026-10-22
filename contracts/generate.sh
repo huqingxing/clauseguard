@@ -48,16 +48,42 @@ else:
 PY
 
 echo "==> [2/3] openapi-generator -> Java DTO (java-service/generated)"
-# 为什么 supportingFiles=false + *Tests=false：只产出 model/client 源码，不污染主模块、不触发额外依赖。
+# 为什么不用 supportingFiles=false：resttemplate 的 client 类依赖 ApiClient/ServerConfiguration/auth
+# 等支撑文件，跳过它们会导致生成的 Java 无法编译。改用 .openapi-generator-ignore 只剔除与编译
+# 无关的脚手架（pom/README/gradle/...），保留 DTO(model)+client(api)+必要支撑。
 # 为什么 library=resttemplate + useJakartaEe=true：与 Spring Boot 3（jakarta）栈一致，编译期只需 spring-web（已含）。
 # 为什么 hideTimestamp：保证两次生成字节一致，满足 make gen 幂等验收。
+# 为什么先 rm -rf generated：openapi-generator 在已有 .openapi-generator 元数据（含旧 FILES 列表）
+# 时会对增量做清理/跳过，导致 model/api 不重写；每次从干净目录重建，内容一致即幂等。
+rm -rf java-service/generated
+mkdir -p java-service/generated
+cat > java-service/generated/.openapi-generator-ignore <<'EOF'
+pom.xml
+README.md
+build.gradle
+build.sbt
+settings.gradle
+gradle.properties
+.travis.yml
+.github/**
+AndroidManifest.xml
+git_push.sh
+gradlew
+gradlew.bat
+gradle/wrapper/**
+.gitignore
+api/openapi.yaml
+EOF
 GENERATOR="npx --yes @openapitools/openapi-generator-cli"
+# 为什么 global-property 只放 apiTests/modelTests=false：openapi-generator 7.26 中把 apis/models/
+# hideGenerationTimestamp 放进 --global-property 会导致整个源码写入被跳过（已验证）；
+# apis/models 默认即为 true，hideGenerationTimestamp 改放 --additional-properties 才生效。
 $GENERATOR generate \
   -i contracts/openapi.yaml \
   -g java \
   -o java-service/generated \
-  --global-property=apis=true,models=true,apiTests=false,modelTests=false,supportingFiles=false,hideGenerationTimestamp=true \
-  --additional-properties=sourceFolder=src/main/java,invokerPackage=com.clauseguard.api,modelPackage=com.clauseguard.api.model,apiPackage=com.clauseguard.api.client,dateLibrary=java8,useJakartaEe=true,library=resttemplate,serializableModel=true
+  --global-property=apiTests=false,modelTests=false \
+  --additional-properties=sourceFolder=src/main/java,invokerPackage=com.clauseguard.api,modelPackage=com.clauseguard.api.model,apiPackage=com.clauseguard.api.client,dateLibrary=java8,useJakartaEe=true,library=resttemplate,serializableModel=true,hideGenerationTimestamp=true,openApiNullable=false
 
 echo "==> [3/3] datamodel-code-generator -> Python models (python-agent/app/contracts/models.py)"
 "$PYTHON" -m datamodel_code_generator \
