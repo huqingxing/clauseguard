@@ -12,7 +12,7 @@ from jsonschema import Draft202012Validator
 
 from app.contracts import models
 
-SCHEMA_PATH = Path(__file__).resolve().parents[1] / "contracts" / "events.schema.json"
+SCHEMA_PATH = Path(__file__).resolve().parents[2] / "contracts" / "events.schema.json"
 SCHEMA = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 # 生成模型类名与 $defs 键一一对应（datamodel-code-generator 默认 PascalCase）。
