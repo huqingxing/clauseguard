@@ -93,6 +93,7 @@ echo "==> [3/3] datamodel-code-generator -> Python models (python-agent/app/cont
   --output-model-type pydantic_v2.BaseModel \
   --target-python-version 3.12 \
   --use-standard-collections \
-  --use-schema-description
+  --use-schema-description \
+  --disable-timestamp
 
 echo "==> DONE: 生成完成。产物已写入 java-service/generated 与 python-agent/app/contracts/models.py"
