@@ -1,0 +1,20 @@
+# 端口与库名来自版本表，不得改动
+server:
+  port: 8080
+
+spring:
+  application:
+    name: clauseguard-java
+  # Stage 0 空跑不连库；引入 mybatis-plus 后启用以下配置
+  # 为什么注释掉：骨架阶段无 MySQL 迁移脚本，启用会导致启动失败
+  # datasource:
+  #   url: jdbc:mysql://localhost:3306/clauseguard?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+  #   username: clauseguard
+  #   password: ${MYSQL_PASSWORD:clauseguard}
+  #   driver-class-name: com.mysql.cj.jdbc.Driver
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -1,0 +1,284 @@
+openapi: "3.1.0"
+info:
+  title: ClauseGuard Java Service API
+  version: "0.1.0"
+  description: >-
+    Java 业务服务的对外 REST 契约。Python 编排层与 Web 前端只依赖本文件描述的接口；
+    Python 对合同/审批/审计数据的读写一律走这里，绝不直连 MySQL。
+    SSE 事件流的结构由 contracts/events.schema.json 单一事实源定义，本文件仅引用其语义。
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: review
+    description: 审查任务生命周期（创建、查询、审批）
+paths:
+  /api/v1/reviews:
+    post:
+      tags: [review]
+      summary: 创建审查任务
+      operationId: createReview
+      description: 针对已上传的合同发起一次审查运行，返回 review_id 与 SSE 订阅地址。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewCreateRequest"
+      responses:
+        "202":
+          description: 已受理，返回 review_id 与流地址。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewCreateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/reviews/{id}/stream:
+    get:
+      tags: [review]
+      summary: 订阅该审查运行的 SSE 事件流
+      operationId: streamReview
+      description: >-
+        text/event-stream。每个 SSE data 行是一个 JSON 对象，结构严格符合
+        contracts/events.schema.json（公共字段 seq/ts/type + 各事件扁平负载）。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: SSE 事件流。
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: 每个事件行是 events.schema.json 定义的 JSON 对象。
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/reviews/{id}/approve:
+    post:
+      tags: [review]
+      summary: 高风险条款人工审批决定
+      operationId: approveReview
+      description: 对单条高风险条款给出 approve / reject / edit 决定，edit 需附带 edited_text。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveRequest"
+      responses:
+        "200":
+          description: 决定已记录。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproveResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/reviews/{id}:
+    get:
+      tags: [review]
+      summary: 查询审查结果
+      operationId: getReview
+      description: 返回审查状态与汇总后的发现列表（完整列表，不分页）。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: 审查结果与发现列表。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/reviews/{id}/findings:
+    get:
+      tags: [review]
+      summary: 分页查询审查发现
+      operationId: listFindings
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: 分页发现列表。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FindingsPage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  responses:
+    BadRequest:
+      description: 请求体校验失败。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: 资源不存在。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    ReviewCreateRequest:
+      type: object
+      required: [contract_id]
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+          description: 已上传合同的 ID。
+    ReviewCreateResponse:
+      type: object
+      required: [review_id, stream_url]
+      properties:
+        review_id:
+          type: string
+          format: uuid
+        stream_url:
+          type: string
+          format: uri
+          description: SSE 订阅地址，形如 /api/v1/reviews/{id}/stream。
+    ApproveRequest:
+      type: object
+      required: [clause_id, decision, contract_version, content_hash]
+      properties:
+        clause_id:
+          type: string
+          description: 被审批条款的 ID。
+        decision:
+          type: string
+          enum: [approve, reject, edit]
+        comment:
+          type: string
+          description: 审批意见，可空。
+        edited_text:
+          type: [string, "null"]
+          description: decision=edit 时必填，审批后的条款正文。
+        contract_version:
+          type: string
+          description: 审批所基于的合同版本号，乐观锁用。
+        content_hash:
+          type: string
+          description: 被审批条款内容的哈希，防止并发篡改。
+      # 为什么用 allOf 约束 edit 必填 edited_text：保持 DTO 强类型，避免服务端 if 判断漂移。
+    ApproveResponse:
+      type: object
+      required: [status, decided_at]
+      properties:
+        status:
+          type: string
+          enum: [accepted, conflict]
+          description: accepted=审批已记录；conflict=contract_version/content_hash 不匹配需重试。
+        decided_at:
+          type: string
+          format: date-time
+    ReviewResult:
+      type: object
+      required: [review_id, contract_id, status, created_at, findings]
+      properties:
+        review_id:
+          type: string
+          format: uuid
+        contract_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, awaiting_approval, completed, failed]
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, "null"]
+          format: date-time
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Finding"
+    Finding:
+      type: object
+      required: [finding_id, clause_id, risk_level, category, summary, created_at]
+      properties:
+        finding_id:
+          type: string
+          format: uuid
+        clause_id:
+          type: string
+        risk_level:
+          type: string
+          enum: [low, medium, high]
+        category:
+          type: string
+          description: 风险类别，如 违约责任 / 保密义务。
+        summary:
+          type: string
+          description: 风险摘要。
+        quote:
+          type: string
+          description: 命中原文片段。
+        suggestion:
+          type: string
+          description: 修改建议。
+        references:
+          type: array
+          items:
+            type: string
+          description: 引用白名单条目，模型不得生成 schema 外法条编号。
+        agent:
+          type: string
+          description: 产出该发现的专家 Agent。
+        created_at:
+          type: string
+          format: date-time
+    FindingsPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Finding"
+        page:
+          type: integer
+          minimum: 0
+        size:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string

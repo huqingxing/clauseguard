@@ -1,0 +1,96 @@
+# 基础设施编排：MySQL 8.4 / PostgreSQL 16+pgvector / Redis 7 / MinIO
+# 端口与库名来自版本表，不得改动。变量通过 --env-file .env 注入（见 .env.example）。
+# 为什么不含明文密码：密钥一律走 .env，避免提交进仓库。
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: clauseguard-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-clauseguard}
+      MYSQL_USER: ${MYSQL_USER:-clauseguard}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-clauseguard}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  postgres:
+    # pgvector 官方镜像（基于 postgres 16），供 LangGraph checkpoint 与向量检索
+    image: pgvector/pgvector:pg16
+    container_name: clauseguard-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clauseguard_agent}
+      POSTGRES_USER: ${POSTGRES_USER:-clauseguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clauseguard}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clauseguard} -d ${POSTGRES_DB:-clauseguard_agent}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  redis:
+    image: redis:7
+    container_name: clauseguard-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    container_name: clauseguard-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-clauseguard}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-clauseguard123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  # 为什么单独一个 init 服务：minio 不会自动建 bucket，用 mc 在 minio healthy 后建 contracts。
+  minio-init:
+    image: minio/mc:latest
+    container_name: clauseguard-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-clauseguard} ${MINIO_ROOT_PASSWORD:-clauseguard123} &&
+         mc mb --ignore-existing local/${MINIO_BUCKET:-contracts} &&
+         echo 'minio bucket ${MINIO_BUCKET:-contracts} ready'"
+    restart: "no"
+
+volumes:
+  mysql-data:
+  postgres-data:
+  redis-data:
+  minio-data:

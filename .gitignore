@@ -1,0 +1,24 @@
+# 依赖与构建产物
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Java
+target/
+*.class
+
+# Node
+node_modules/
+dist/
+
+# 密钥与本地环境（切勿提交）
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.iml
