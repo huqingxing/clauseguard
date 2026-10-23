@@ -41,6 +41,8 @@ packages = ["app"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# 生成代码（datamodel-code-generator 产出）只读、禁止手改，不纳入项目风格检查。
+extend-exclude = ["app/contracts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "T20"]  # T20: 禁止裸 print
@@ -48,6 +50,9 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "T20"]  # T20: 禁止裸 print
 [tool.mypy]
 python_version = "3.12"
 strict = true
+# 生成代码（datamodel-code-generator 产出，含 conint/confloat 调用式注解）只读、禁止手改，
+# 不纳入项目类型检查。
+exclude = "app/contracts"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
