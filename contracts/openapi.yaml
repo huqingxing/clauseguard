@@ -59,23 +59,33 @@ paths:
   /api/v1/reviews/{id}/approve:
     post:
       tags: [review]
-      summary: 高风险条款人工审批决定
+      summary: 高风险条款人工审批决定（数组）
       operationId: approveReview
-      description: 对单条高风险条款给出 approve / reject / edit 决定，edit 需附带 edited_text。
+      description: >-
+        审批是图的一部分：本端点校验 contract_version/content_hash（与中断时基线比对，
+        不一致返回 409 CONTRACT_CHANGED），落库每条审批记录（含操作人、时间、前后措辞），
+        再转发到 Python resume 续跑。请求体为审批结果数组（每条对应一条待审高风险条款）。
       parameters:
         - name: id
           in: path
           required: true
           schema: { type: string, format: uuid }
+        - name: X-Operator
+          in: header
+          required: true
+          schema: { type: string }
+          description: 审批操作人，写入 approval 表用于审计留痕。
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ApproveRequest"
+              type: array
+              items:
+                $ref: "#/components/schemas/ApproveRequest"
       responses:
         "200":
-          description: 决定已记录。
+          description: 决定已记录，运行已恢复。
           content:
             application/json:
               schema:
@@ -84,6 +94,12 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: 合同版本/内容哈希与中断时基线不一致（合同已被修改），审批被拒，需重拉合同重试。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/reviews/{id}:
     get:
       tags: [review]

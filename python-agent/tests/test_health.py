@@ -21,6 +21,7 @@ def test_event_type_enum_matches_schema() -> None:
         "run.started",
         "node.started",
         "node.finished",
+        "node.failed",
         "message.delta",
         "tool.call",
         "tool.result",

@@ -1,7 +1,11 @@
-"""Stage 3 验收：SSE 事件流的序列、seq 单调性、schema 合规、断开取消。
+"""Stage 3/7 验收：SSE 事件流的序列、seq 单调性、schema 合规、断开取消。
 
 为什么用 asyncio.run 而非 pytest-asyncio：版本表未列该插件，铁律 5 禁止引入版本表外依赖；
 同步测试内直接驱动事件循环即可覆盖异步路径。
+
+Stage 7 起拓扑为 ingest -> dispatch -> (Send fan-out)，空合同（无条款）时 dispatch
+不分发任何分片直接收尾，故事件序列为 run.started → ingest 起止 → dispatch 起止 →
+run.completed（真实 usage/findings_count/degraded 来自图终态）。
 """
 
 import asyncio
@@ -26,9 +30,6 @@ EXPECTED_ORDER: list[EventType] = [
     EventType.NODE_STARTED,
     EventType.NODE_FINISHED,
     EventType.NODE_STARTED,
-    EventType.MESSAGE_DELTA,
-    EventType.MESSAGE_DELTA,
-    EventType.MESSAGE_DELTA,
     EventType.NODE_FINISHED,
     EventType.RUN_COMPLETED,
 ]

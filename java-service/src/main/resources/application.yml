@@ -5,13 +5,61 @@ server:
 spring:
   application:
     name: clauseguard-java
-  # Stage 0 空跑不连库；引入 mybatis-plus 后启用以下配置
-  # 为什么注释掉：骨架阶段无 MySQL 迁移脚本，启用会导致启动失败
-  # datasource:
-  #   url: jdbc:mysql://localhost:3306/clauseguard?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-  #   username: clauseguard
-  #   password: ${MYSQL_PASSWORD:clauseguard}
-  #   driver-class-name: com.mysql.cj.jdbc.Driver
+  # 唯一 MySQL 访问方：schema 由 Flyway 拥有，JPA 不自动建表
+  datasource:
+    url: jdbc:mysql://localhost:3306/clauseguard?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: clauseguard
+    password: ${MYSQL_PASSWORD:clauseguard}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  # 事件重放存储（断线续传）：默认 Redis Stream，保留最近 1000 条
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+  ai:
+    mcp:
+      server:
+        enabled: true
+        name: clauseguard-mcp
+        version: 0.1.0
+        # SSE over WebMvc：MCP Inspector 连接 http://localhost:8080/mcp/sse
+        # 切换 stdio 传输：--spring.ai.mcp.server.transport=STDIO --spring.main.web-application-type=none
+        transport: WEBMVC
+
+# 下游 Python 编排服务（SSE 网关转发目标）
+clauseguard:
+  python:
+    base-url: http://localhost:8000
+    # 下游 SSE 调用整体超时；超时才触发熔断计数
+    connect-timeout: 5s
+    response-timeout: 30s
+  # 事件重放存储实现：redis（默认）| in-memory（本地无 Redis 时）
+  event-store: redis
+
+# 下游 Python 熔断：连续失败打开后，/stream 直接返回 503 且可重试
+resilience4j:
+  circuitbreaker:
+    instances:
+      pythonAgent:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
 
 management:
   endpoints:

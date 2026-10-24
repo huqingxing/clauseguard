@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal, Union
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint
 
@@ -61,6 +61,25 @@ class NodeFinished(BaseModel):
     node: str = Field(..., description='图节点标识。')
     duration_ms: conint(ge=0) = Field(..., description='节点执行耗时（毫秒）。')
     tokens: conint(ge=0) = Field(..., description='该节点累计消耗 token 数。')
+
+
+class NodeFailed(BaseModel):
+    """
+    图节点执行失败并被捕获：该分支中止，其余分支继续，run 不中断。
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    seq: conint(ge=0) = Field(..., description='单调递增整数。')
+    ts: datetime = Field(..., description='RFC3339 事件发生时间，UTC。')
+    type: Literal['node.failed'] = Field(..., description='事件类型，点分小写。')
+    node: str = Field(..., description='失败的图节点标识，如 review.liability。')
+    agent: str = Field(
+        ..., description='执行该节点的专家 Agent 名，如 liability_expert。'
+    )
+    code: str = Field(..., description='机器可读错误码，如 EXPERT_REVIEW_FAILED。')
+    message: str = Field(..., description='人类可读错误描述，禁止携带密钥等敏感信息。')
 
 
 class MessageDelta(BaseModel):
@@ -142,9 +161,47 @@ class Usage(BaseModel):
     cost_cny: confloat(ge=0.0) = Field(..., description='估算成本（人民币元）。')
 
 
+class Quality(BaseModel):
+    """
+    Critic 确定性校验的质量指标（Stage 8）。
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    verified_rate: confloat(ge=0.0, le=1.0) = Field(
+        ...,
+        description='通过校验（非 unverified 档）的 finding 占比；无 finding 时定义为 1.0。',
+    )
+    rework_count: conint(ge=0) = Field(
+        ...,
+        description='Critic 打回重审的轮数（上限 2 轮，超出即标记 unverified 放行）。',
+    )
+    unverified_count: conint(ge=0) = Field(
+        ...,
+        description='终态 unverified 档 finding 条数（含引擎层引用丢空降级与 Critic 打回超限降级）。',
+    )
+
+
+class Artifact(BaseModel):
+    """
+    Stage 10：批注回写产物（带签名下载 URL）。
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    object_key: str = Field(..., description='产物在 MinIO 中的对象键。')
+    download_url: str = Field(
+        ..., description='预签名下载 URL，限时有效；前端据此下载带批注的 Word。'
+    )
+    comments_count: conint(ge=0) = Field(..., description='实际写入的批注条数。')
+    size_bytes: conint(ge=0) = Field(..., description='产物字节数。')
+
+
 class RunCompleted(BaseModel):
     """
-    审查运行完成，携带总用量与发现数。
+    审查运行完成，携带总用量、发现数与 Critic 质量指标。
     """
 
     model_config = ConfigDict(
@@ -155,6 +212,14 @@ class RunCompleted(BaseModel):
     type: Literal['run.completed'] = Field(..., description='事件类型，点分小写。')
     usage: Usage = Field(..., description='本次运行的总 token 用量与估算成本。')
     findings_count: conint(ge=0) = Field(..., description='汇总的审查发现条数。')
+    degraded: Optional[bool] = Field(
+        False,
+        description='是否发生降级：预算超限跳过低优先级专家（ip/data/compliance）、节点失败或 Critic 因预算耗尽放弃打回时为 true。',
+    )
+    quality: Quality = Field(
+        ..., description='Critic 确定性校验的质量指标（Stage 8）。'
+    )
+    artifact: Optional[Artifact] = None
 
 
 class RunFailed(BaseModel):
@@ -179,6 +244,7 @@ class ClauseguardSseEvents(
             RunStarted,
             NodeStarted,
             NodeFinished,
+            NodeFailed,
             MessageDelta,
             ToolCall,
             ToolResult,
@@ -192,6 +258,7 @@ class ClauseguardSseEvents(
         RunStarted,
         NodeStarted,
         NodeFinished,
+        NodeFailed,
         MessageDelta,
         ToolCall,
         ToolResult,

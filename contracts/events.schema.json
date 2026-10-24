@@ -7,6 +7,7 @@
     { "$ref": "#/$defs/RunStarted" },
     { "$ref": "#/$defs/NodeStarted" },
     { "$ref": "#/$defs/NodeFinished" },
+    { "$ref": "#/$defs/NodeFailed" },
     { "$ref": "#/$defs/MessageDelta" },
     { "$ref": "#/$defs/ToolCall" },
     { "$ref": "#/$defs/ToolResult" },
@@ -65,6 +66,25 @@
       "additionalProperties": false,
       "examples": [
         { "seq": 3, "ts": "2026-10-22T10:00:04Z", "type": "node.finished", "node": "review.liability", "duration_ms": 3120, "tokens": 1840 }
+      ]
+    },
+    "NodeFailed": {
+      "type": "object",
+      "title": "node.failed",
+      "description": "图节点执行失败并被捕获：该分支中止，其余分支继续，run 不中断。",
+      "required": ["seq", "ts", "type", "node", "agent", "code", "message"],
+      "properties": {
+        "seq": { "type": "integer", "minimum": 0, "description": "单调递增整数。" },
+        "ts": { "type": "string", "format": "date-time", "description": "RFC3339 事件发生时间，UTC。" },
+        "type": { "type": "string", "const": "node.failed", "description": "事件类型，点分小写。" },
+        "node": { "type": "string", "description": "失败的图节点标识，如 review.liability。" },
+        "agent": { "type": "string", "description": "执行该节点的专家 Agent 名，如 liability_expert。" },
+        "code": { "type": "string", "description": "机器可读错误码，如 EXPERT_REVIEW_FAILED。" },
+        "message": { "type": "string", "description": "人类可读错误描述，禁止携带密钥等敏感信息。" }
+      },
+      "additionalProperties": false,
+      "examples": [
+        { "seq": 7, "ts": "2026-10-24T10:00:03Z", "type": "node.failed", "node": "review.liability", "agent": "liability_expert", "code": "EXPERT_REVIEW_FAILED", "message": "upstream model timed out after 30s" }
       ]
     },
     "MessageDelta": {
@@ -140,8 +160,8 @@
     "RunCompleted": {
       "type": "object",
       "title": "run.completed",
-      "description": "审查运行完成，携带总用量与发现数。",
-      "required": ["seq", "ts", "type", "usage", "findings_count"],
+      "description": "审查运行完成，携带总用量、发现数与 Critic 质量指标。",
+      "required": ["seq", "ts", "type", "usage", "findings_count", "quality"],
       "properties": {
         "seq": { "type": "integer", "minimum": 0, "description": "单调递增整数。" },
         "ts": { "type": "string", "format": "date-time", "description": "RFC3339 事件发生时间，UTC。" },
@@ -157,11 +177,72 @@
           },
           "additionalProperties": false
         },
-        "findings_count": { "type": "integer", "minimum": 0, "description": "汇总的审查发现条数。" }
+        "findings_count": { "type": "integer", "minimum": 0, "description": "汇总的审查发现条数。" },
+        "degraded": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否发生降级：预算超限跳过低优先级专家（ip/data/compliance）、节点失败或 Critic 因预算耗尽放弃打回时为 true。"
+        },
+        "quality": {
+          "type": "object",
+          "description": "Critic 确定性校验的质量指标（Stage 8）。",
+          "required": ["verified_rate", "rework_count", "unverified_count"],
+          "properties": {
+            "verified_rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "通过校验（非 unverified 档）的 finding 占比；无 finding 时定义为 1.0。"
+            },
+            "rework_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Critic 打回重审的轮数（上限 2 轮，超出即标记 unverified 放行）。"
+            },
+            "unverified_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "终态 unverified 档 finding 条数（含引擎层引用丢空降级与 Critic 打回超限降级）。"
+            }
+          },
+          "additionalProperties": false
+        },
+        "artifact": {
+          "anyOf": [
+            {
+              "type": "object",
+              "description": "Stage 10：批注回写产物（带签名下载 URL）。",
+              "required": ["object_key", "download_url", "comments_count", "size_bytes"],
+              "properties": {
+                "object_key": {
+                  "type": "string",
+                  "description": "产物在 MinIO 中的对象键。"
+                },
+                "download_url": {
+                  "type": "string",
+                  "description": "预签名下载 URL，限时有效；前端据此下载带批注的 Word。"
+                },
+                "comments_count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "实际写入的批注条数。"
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "产物字节数。"
+                }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        }
       },
       "additionalProperties": false,
       "examples": [
-        { "seq": 8, "ts": "2026-10-22T10:00:10Z", "type": "run.completed", "usage": { "input_tokens": 21000, "output_tokens": 4200, "cost_cny": 0.86 }, "findings_count": 17 }
+        { "seq": 8, "ts": "2026-10-22T10:00:10Z", "type": "run.completed", "usage": { "input_tokens": 21000, "output_tokens": 4200, "cost_cny": 0.86 }, "findings_count": 17, "degraded": false, "quality": { "verified_rate": 0.9412, "rework_count": 1, "unverified_count": 1 } },
+        { "seq": 14, "ts": "2026-10-24T13:05:00Z", "type": "run.completed", "usage": { "input_tokens": 21000, "output_tokens": 4200, "cost_cny": 0.86 }, "findings_count": 17, "degraded": false, "quality": { "verified_rate": 0.9412, "rework_count": 1, "unverified_count": 1 }, "artifact": { "object_key": "artifacts/contract-7f3a/v1/annotated.docx", "download_url": "http://localhost:9000/clauseguard/artifacts/contract-7f3a/v1/annotated.docx?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20261024%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261024T130500Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "comments_count": 5, "size_bytes": 48213 } }
       ]
     },
     "RunFailed": {

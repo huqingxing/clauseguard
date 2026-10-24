@@ -1,0 +1,10 @@
+# 测试切片环境：关闭 MCP 与数据类自动配置，保证无 MySQL/Redis 也能启动 web 上下文
+spring:
+  ai:
+    mcp:
+      server:
+        enabled: false
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration

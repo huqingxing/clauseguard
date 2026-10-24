@@ -16,6 +16,9 @@ dependencies = [
     "PyMuPDF>=1.24",
     "python-docx>=1.1",
     "lxml>=5",
+    # Stage 6：OpenAI 兼容聊天模型（app/clients/openai_compat.py）的 HTTP 客户端；
+    # 原在 dev 组（TestClient 用），现运行时需要，提为运行时依赖（非新增依赖）。
+    "httpx>=0.28",
 ]
 
 [dependency-groups]
@@ -53,6 +56,12 @@ strict = true
 # 生成代码（datamodel-code-generator 产出，含 conint/confloat 调用式注解）只读、禁止手改，
 # 不纳入项目类型检查。
 exclude = "app/contracts"
+
+# lxml 无类型 stub 包且版本表不外扩依赖（铁律 5）：按缺失导入放行，
+# docx_writer 内部对 lxml 的用法集中在少数私有函数，边界处已显式标注。
+[[tool.mypy.overrides]]
+module = "lxml.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

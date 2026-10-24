@@ -20,6 +20,7 @@ MODEL_BY_DEF: dict[str, Any] = {
     "RunStarted": models.RunStarted,
     "NodeStarted": models.NodeStarted,
     "NodeFinished": models.NodeFinished,
+    "NodeFailed": models.NodeFailed,
     "MessageDelta": models.MessageDelta,
     "ToolCall": models.ToolCall,
     "ToolResult": models.ToolResult,

@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from app.contracts.models import (  # noqa: F401  生成模型，单一事实源的镜像
     Interrupt,
     MessageDelta,
+    NodeFailed,
     NodeFinished,
     NodeStarted,
     RunCompleted,
@@ -39,6 +40,7 @@ class EventType(StrEnum):
     RUN_STARTED = "run.started"
     NODE_STARTED = "node.started"
     NODE_FINISHED = "node.finished"
+    NODE_FAILED = "node.failed"
     MESSAGE_DELTA = "message.delta"
     TOOL_CALL = "tool.call"
     TOOL_RESULT = "tool.result"
@@ -57,6 +59,7 @@ MODEL_BY_TYPE: dict[EventType, type[BaseModel]] = {
     EventType.RUN_STARTED: RunStarted,
     EventType.NODE_STARTED: NodeStarted,
     EventType.NODE_FINISHED: NodeFinished,
+    EventType.NODE_FAILED: NodeFailed,
     EventType.MESSAGE_DELTA: MessageDelta,
     EventType.TOOL_CALL: ToolCall,
     EventType.TOOL_RESULT: ToolResult,
