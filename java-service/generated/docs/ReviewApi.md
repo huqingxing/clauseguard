@@ -4,7 +4,7 @@ All URIs are relative to *http://localhost:8080*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**approveReview**](ReviewApi.md#approveReview) | **POST** /api/v1/reviews/{id}/approve | 高风险条款人工审批决定 |
+| [**approveReview**](ReviewApi.md#approveReview) | **POST** /api/v1/reviews/{id}/approve | 高风险条款人工审批决定（数组） |
 | [**createReview**](ReviewApi.md#createReview) | **POST** /api/v1/reviews | 创建审查任务 |
 | [**getReview**](ReviewApi.md#getReview) | **GET** /api/v1/reviews/{id} | 查询审查结果 |
 | [**listFindings**](ReviewApi.md#listFindings) | **GET** /api/v1/reviews/{id}/findings | 分页查询审查发现 |
@@ -14,11 +14,11 @@ All URIs are relative to *http://localhost:8080*
 
 ## approveReview
 
-> ApproveResponse approveReview(id, approveRequest)
+> ApproveResponse approveReview(id, xOperator, approveRequest)
 
-高风险条款人工审批决定
+高风险条款人工审批决定（数组）
 
-对单条高风险条款给出 approve / reject / edit 决定，edit 需附带 edited_text。
+审批是图的一部分：本端点校验 contract_version/content_hash（与中断时基线比对， 不一致返回 409 CONTRACT_CHANGED），落库每条审批记录（含操作人、时间、前后措辞）， 再转发到 Python resume 续跑。请求体为审批结果数组（每条对应一条待审高风险条款）。
 
 ### Example
 
@@ -37,9 +37,10 @@ public class Example {
 
         ReviewApi apiInstance = new ReviewApi(defaultClient);
         UUID id = UUID.randomUUID(); // UUID | 
-        ApproveRequest approveRequest = new ApproveRequest(); // ApproveRequest | 
+        String xOperator = "xOperator_example"; // String | 审批操作人，写入 approval 表用于审计留痕。
+        List<ApproveRequest> approveRequest = Arrays.asList(); // List<ApproveRequest> | 
         try {
-            ApproveResponse result = apiInstance.approveReview(id, approveRequest);
+            ApproveResponse result = apiInstance.approveReview(id, xOperator, approveRequest);
             System.out.println(result);
         } catch (ApiException e) {
             System.err.println("Exception when calling ReviewApi#approveReview");
@@ -58,7 +59,8 @@ public class Example {
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **id** | **UUID**|  | |
-| **approveRequest** | [**ApproveRequest**](ApproveRequest.md)|  | |
+| **xOperator** | **String**| 审批操作人，写入 approval 表用于审计留痕。 | |
+| **approveRequest** | [**List&lt;ApproveRequest&gt;**](ApproveRequest.md)|  | |
 
 ### Return type
 
@@ -77,9 +79,10 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **200** | 决定已记录。 |  -  |
+| **200** | 决定已记录，运行已恢复。 |  -  |
 | **400** | 请求体校验失败。 |  -  |
 | **404** | 资源不存在。 |  -  |
+| **409** | 合同版本/内容哈希与中断时基线不一致（合同已被修改），审批被拒，需重拉合同重试。 |  -  |
 
 
 ## createReview
@@ -88,7 +91,7 @@ No authorization required
 
 创建审查任务
 
-针对已上传的合同发起一次审查运行，返回 review_id 与 SSE 订阅地址。
+针对已上传的合同发起一次审查运行，返回 review_id 与 SSE 订阅地址。 Stage 11：mode&#x3D;incremental 时只重审相对 base_version 变更/新增的条款， 未变更条款的既有结论走缓存复用（base_version 省略时由编排层按 version-1 推断）。
 
 ### Example
 

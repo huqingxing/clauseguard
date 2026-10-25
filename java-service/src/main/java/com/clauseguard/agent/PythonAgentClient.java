@@ -56,11 +56,30 @@ public class PythonAgentClient {
      * CallNotPermittedException 结束（由调用方转为 run.failed）。
      */
     public Flux<AgentEvent> streamRun(String reviewId, String contractId, String traceparent) {
+        return streamRun(reviewId, contractId, traceparent, 0, "full", 0);
+    }
+
+    /**
+     * Stage 11：带版本号/模式的触发入口。version/mode/base_version 原样透传给 Python，
+     * Java 不解释其语义（增量 diff 与缓存命中全在编排层），只负责把业务侧的版本事实传下去。
+     */
+    public Flux<AgentEvent> streamRun(
+            String reviewId,
+            String contractId,
+            String traceparent,
+            int version,
+            String mode,
+            int baseVersion) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("contract_id", contractId);
+        body.put("version", version);
+        body.put("mode", mode == null || mode.isBlank() ? "full" : mode);
+        body.put("base_version", baseVersion);
         return webClient.post()
                 .uri("/v1/runs")
                 .header("traceparent", traceparent)
                 .accept(MediaType.TEXT_EVENT_STREAM)
-                .bodyValue(Map.of("contract_id", contractId))
+                .bodyValue(body)
                 .retrieve()
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {
                 })

@@ -29,6 +29,7 @@ import java.util.function.BooleanSupplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -83,7 +84,8 @@ class ReviewServiceTest {
                 "{\"seq\":1,\"type\":\"node.started\"}");
         AgentEvent e2 = new AgentEvent(2, "2026-10-23T10:00:01+00:00", "run.completed",
                 "{\"seq\":2,\"type\":\"run.completed\"}");
-        when(agentClient.streamRun(anyString(), anyString(), anyString())).thenReturn(Flux.just(e1, e2));
+        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt()))
+                .thenReturn(Flux.just(e1, e2));
 
         ReviewCreateRequest request = new ReviewCreateRequest()
                 .contractId(UUID.fromString("00000000-0000-0000-0000-0000000000a1"));
@@ -99,8 +101,44 @@ class ReviewServiceTest {
     }
 
     @Test
+    void incrementalCreateForwardsVersionModeAndBaseVersionToAgent() {
+        // Stage 11：前端「仅重审变更」= mode=incremental + 真实版本号；Java 不解释语义，
+        // 但必须把版本事实原样透传给编排层（落库版本与透传版本也必须一致）。
+        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt()))
+                .thenReturn(Flux.empty());
+
+        ReviewCreateRequest request = new ReviewCreateRequest()
+                .contractId(UUID.fromString("00000000-0000-0000-0000-0000000000b1"))
+                .version(3)
+                .mode(ReviewCreateRequest.ModeEnum.INCREMENTAL)
+                .baseVersion(2);
+        service.createReview(request, null);
+
+        verify(agentClient).streamRun(anyString(), anyString(), anyString(), eq(3), eq("incremental"), eq(2));
+        ArgumentCaptor<Review> saved = ArgumentCaptor.forClass(Review.class);
+        verify(reviewRepository).save(saved.capture());
+        assertThat(saved.getValue().getVersion()).isEqualTo(3);
+    }
+
+    @Test
+    void fullCreateDefaultsToModeFullAndVersionOne() {
+        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt()))
+                .thenReturn(Flux.empty());
+
+        ReviewCreateRequest request = new ReviewCreateRequest()
+                .contractId(UUID.fromString("00000000-0000-0000-0000-0000000000b2"));
+        service.createReview(request, null);
+
+        // 未指定版本时沿用既有语义（v1 + full），不改变既有调用方行为。
+        verify(agentClient).streamRun(anyString(), anyString(), anyString(), eq(0), eq("full"), eq(0));
+        ArgumentCaptor<Review> saved = ArgumentCaptor.forClass(Review.class);
+        verify(reviewRepository).save(saved.capture());
+        assertThat(saved.getValue().getVersion()).isEqualTo(1);
+    }
+
+    @Test
     void agentUnavailableEmitsRunFailedWithRetryable() throws Exception {
-        when(agentClient.streamRun(anyString(), anyString(), anyString()))
+        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt()))
                 .thenReturn(Flux.error(new RuntimeException("boom")));
 
         ReviewCreateRequest request = new ReviewCreateRequest()

@@ -20,8 +20,12 @@
   - 预算已耗尽或找不到产出专家/条款文本（无法路由重审）→ 直接标 unverified，
     不做无意义的打回。
 
-拓扑：critic 是汇合点——pass 走 END（Stage 9 起改指 risk_score），fail 走 rework
-重新汇入 critic。计数器单调递增且上限硬编码，图必然收敛，不会死循环。
+拓扑：critic 是汇合点——pass 走 cache_store（Stage 11 起，校验通过才写缓存），
+fail 走 rework 重新汇入 critic。计数器单调递增且上限硬编码，图必然收敛，不会死循环。
+
+Stage 11：stale=true 的 finding（所属条款在新版本已被删除）不参与校验——它们的条款
+文本已不在 state.clauses，校验必然判「证据缺失」进而被标 unverified 或触发无效打回，
+把纯历史记录污染成本轮质量问题；它们以 stale 形态原样留存供追溯，但不上报告。
 
 为什么不置 degraded：unverified 是质量指标而非运行降级；仅预算耗尽导致的放弃
 打回同时置 degraded（与 Stage 7 的降级语义一致）。
@@ -218,10 +222,16 @@ async def critic(
 
     clauses_by_id: dict[str, Clause] = {clause.clause_id: clause for clause in state["clauses"]}
     failing: list[tuple[Finding, list[str]]] = []
+    stale_count = 0
     for finding in state["findings"]:
+        if finding.stale:
+            stale_count += 1
+            continue
         reasons = validate_finding(finding, clauses_by_id.get(finding.clause_id))
         if reasons:
             failing.append((finding, reasons))
+    if stale_count:
+        logger.info("critic 跳过 %d 条 stale finding（所属条款已删除，仅追溯不校验）", stale_count)
 
     grouped = _group_by_expert_clause(failing)
     unroutable: list[tuple[Finding, list[str]]] = []
@@ -270,7 +280,7 @@ async def critic(
             emitter,
             started,
             Command(
-                goto="human_approval",
+                goto="cache_store",
                 update={"findings": updates, **updates_degraded},
             ),
         )
@@ -280,7 +290,7 @@ async def critic(
         return await _finish(
             emitter,
             started,
-            Command(goto="human_approval", update={"findings": updates} if updates else None),
+            Command(goto="cache_store", update={"findings": updates} if updates else None),
         )
 
     # ---- 打回轮：墓碑删旧版本 + 计数 + 1 + rework 指令，条件边回退专家节点 ----

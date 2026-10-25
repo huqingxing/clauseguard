@@ -88,7 +88,11 @@ public class ReviewService {
         Review review = new Review();
         review.setId(reviewId);
         review.setContractId(request.getContractId().toString());
-        review.setVersion(1);
+        // Stage 11：合同版本来自请求（前端「仅重审变更」会带上真实版本号）。
+        // 落库版本与透传给 Python 的版本必须是同一个——人工审批的乐观锁与增量 diff
+        // 都以它为基准，两处漂移会让审批基线对不上、diff 拿错基线。
+        int version = request.getVersion() == null ? 0 : Math.max(0, request.getVersion());
+        review.setVersion(version == 0 ? 1 : version);
         review.setStatus(ReviewStatus.RUNNING);
         review.setCreatedAt(Instant.now());
         reviewRepository.save(review);
@@ -96,7 +100,9 @@ public class ReviewService {
         String streamUrl = "/api/v1/reviews/" + reviewId + "/stream";
         String traceparent = (incomingTraceparent != null && !incomingTraceparent.isBlank())
                 ? incomingTraceparent : generateTraceparent();
-        subscribeToAgent(reviewId, request.getContractId().toString(), traceparent);
+        String mode = request.getMode() == null ? "full" : request.getMode().getValue();
+        int baseVersion = request.getBaseVersion() == null ? 0 : Math.max(0, request.getBaseVersion());
+        subscribeToAgent(reviewId, request.getContractId().toString(), traceparent, version, mode, baseVersion);
         return new ReviewCreateResponse()
                 .reviewId(UUID.fromString(reviewId))
                 .streamUrl(URI.create(streamUrl));
@@ -105,11 +111,17 @@ public class ReviewService {
     /**
      * 订阅 SSE 事件流。仅当该 review 尚未在订阅时才真正发起调用，防止重复订阅。
      */
-    private void subscribeToAgent(String reviewId, String contractId, String traceparent) {
+    private void subscribeToAgent(
+            String reviewId,
+            String contractId,
+            String traceparent,
+            int version,
+            String mode,
+            int baseVersion) {
         if (subscribing.putIfAbsent(reviewId, Boolean.TRUE) != null) {
             return;
         }
-        agentClient.streamRun(reviewId, contractId, traceparent)
+        agentClient.streamRun(reviewId, contractId, traceparent, version, mode, baseVersion)
                 .subscribe(
                         event -> handleAgentEvent(reviewId, event),
                         error -> {

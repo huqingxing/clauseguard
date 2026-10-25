@@ -30,7 +30,10 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
  * ReviewCreateRequest
  */
 @JsonPropertyOrder({
-  ReviewCreateRequest.JSON_PROPERTY_CONTRACT_ID
+  ReviewCreateRequest.JSON_PROPERTY_CONTRACT_ID,
+  ReviewCreateRequest.JSON_PROPERTY_VERSION,
+  ReviewCreateRequest.JSON_PROPERTY_MODE,
+  ReviewCreateRequest.JSON_PROPERTY_BASE_VERSION
 })
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.26.0")
 public class ReviewCreateRequest implements Serializable {
@@ -39,6 +42,53 @@ public class ReviewCreateRequest implements Serializable {
   public static final String JSON_PROPERTY_CONTRACT_ID = "contract_id";
   @jakarta.annotation.Nonnull
   private UUID contractId;
+
+  public static final String JSON_PROPERTY_VERSION = "version";
+  @jakarta.annotation.Nullable
+  private Integer version = 0;
+
+  /**
+   * Stage 11：full&#x3D;全量重审（不查缓存，成本对比基线）； incremental&#x3D;仅重审变更条款，未变更条款复用缓存结论。
+   */
+  public enum ModeEnum {
+    FULL(String.valueOf("full")),
+    
+    INCREMENTAL(String.valueOf("incremental"));
+
+    private String value;
+
+    ModeEnum(String value) {
+      this.value = value;
+    }
+
+    @JsonValue
+    public String getValue() {
+      return value;
+    }
+
+    @Override
+    public String toString() {
+      return String.valueOf(value);
+    }
+
+    @JsonCreator
+    public static ModeEnum fromValue(String value) {
+      for (ModeEnum b : ModeEnum.values()) {
+        if (b.value.equals(value)) {
+          return b;
+        }
+      }
+      throw new IllegalArgumentException("Unexpected value '" + value + "'");
+    }
+  }
+
+  public static final String JSON_PROPERTY_MODE = "mode";
+  @jakarta.annotation.Nullable
+  private ModeEnum mode = ModeEnum.FULL;
+
+  public static final String JSON_PROPERTY_BASE_VERSION = "base_version";
+  @jakarta.annotation.Nullable
+  private Integer baseVersion = 0;
 
   public ReviewCreateRequest() {
   }
@@ -68,6 +118,83 @@ public class ReviewCreateRequest implements Serializable {
     this.contractId = contractId;
   }
 
+  public ReviewCreateRequest version(@jakarta.annotation.Nullable Integer version) {
+    
+    this.version = version;
+    return this;
+  }
+
+  /**
+   * 本次审查对应的合同版本号。Stage 11：增量重审按版本号定位基线快照， 与 base_version 共同决定 diff 的比对范围。
+   * minimum: 0
+   * @return version
+   */
+  @jakarta.annotation.Nullable
+  @JsonProperty(value = JSON_PROPERTY_VERSION, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+
+  public Integer getVersion() {
+    return version;
+  }
+
+
+  @JsonProperty(value = JSON_PROPERTY_VERSION, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+  public void setVersion(@jakarta.annotation.Nullable Integer version) {
+    this.version = version;
+  }
+
+  public ReviewCreateRequest mode(@jakarta.annotation.Nullable ModeEnum mode) {
+    
+    this.mode = mode;
+    return this;
+  }
+
+  /**
+   * Stage 11：full&#x3D;全量重审（不查缓存，成本对比基线）； incremental&#x3D;仅重审变更条款，未变更条款复用缓存结论。
+   * @return mode
+   */
+  @jakarta.annotation.Nullable
+  @JsonProperty(value = JSON_PROPERTY_MODE, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+
+  public ModeEnum getMode() {
+    return mode;
+  }
+
+
+  @JsonProperty(value = JSON_PROPERTY_MODE, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+  public void setMode(@jakarta.annotation.Nullable ModeEnum mode) {
+    this.mode = mode;
+  }
+
+  public ReviewCreateRequest baseVersion(@jakarta.annotation.Nullable Integer baseVersion) {
+    
+    this.baseVersion = baseVersion;
+    return this;
+  }
+
+  /**
+   * Stage 11：增量重审的基线版本号；0 表示由编排层按 version-1 推断。 仅 mode&#x3D;incremental 时有意义。
+   * minimum: 0
+   * @return baseVersion
+   */
+  @jakarta.annotation.Nullable
+  @JsonProperty(value = JSON_PROPERTY_BASE_VERSION, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+
+  public Integer getBaseVersion() {
+    return baseVersion;
+  }
+
+
+  @JsonProperty(value = JSON_PROPERTY_BASE_VERSION, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+  public void setBaseVersion(@jakarta.annotation.Nullable Integer baseVersion) {
+    this.baseVersion = baseVersion;
+  }
+
 
   @Override
   public boolean equals(Object o) {
@@ -78,12 +205,15 @@ public class ReviewCreateRequest implements Serializable {
       return false;
     }
     ReviewCreateRequest reviewCreateRequest = (ReviewCreateRequest) o;
-    return Objects.equals(this.contractId, reviewCreateRequest.contractId);
+    return Objects.equals(this.contractId, reviewCreateRequest.contractId) &&
+        Objects.equals(this.version, reviewCreateRequest.version) &&
+        Objects.equals(this.mode, reviewCreateRequest.mode) &&
+        Objects.equals(this.baseVersion, reviewCreateRequest.baseVersion);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(contractId);
+    return Objects.hash(contractId, version, mode, baseVersion);
   }
 
   @Override
@@ -91,6 +221,9 @@ public class ReviewCreateRequest implements Serializable {
     StringBuilder sb = new StringBuilder();
     sb.append("class ReviewCreateRequest {\n");
     sb.append("    contractId: ").append(toIndentedString(contractId)).append("\n");
+    sb.append("    version: ").append(toIndentedString(version)).append("\n");
+    sb.append("    mode: ").append(toIndentedString(mode)).append("\n");
+    sb.append("    baseVersion: ").append(toIndentedString(baseVersion)).append("\n");
     sb.append("}");
     return sb.toString();
   }

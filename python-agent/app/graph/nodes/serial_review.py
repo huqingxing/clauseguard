@@ -12,6 +12,9 @@ state（merge_budget 累加），避免与并发分支互相覆盖。
 Stage 8 起重审通道：state["rework"] 非空表示这是 Critic 打回后的重审轮——
 只审查指令中的（专家，条款）并注入修正指令，其余逻辑（事件/记账/降级）与
 常规轮完全一致，保证串行模式下打回-重审-再汇合的形状不退化。
+
+Stage 11：增量模式下待审条款同样由 review_targets 收窄（复用 dispatch 的同口径函数），
+保证串行与并行两条拓扑在「只花 5% 的钱」上行为一致，不出现「串行偷偷全量审」。
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from app.agents.registry import EXPERTS, get_expert
 from app.agents.settings import get_agent_settings
 from app.events import EventType, get_emitter
 from app.graph.nodes.critic import build_rework_instruction
+from app.graph.nodes.dispatch import incremental_targets, scoped_clauses
 from app.graph.nodes.expert_review import get_agent_factory
 from app.graph.nodes.review import review_clause
 from app.graph.state import (
@@ -133,9 +137,12 @@ async def serial_review(state: ReviewState, config: RunnableConfig) -> dict[str,
     degraded = False
     total_in = total_out = 0
     total_cost = 0.0
+    targets = incremental_targets(state)
+    reviewed: list[str] = []
 
     for spec in EXPERTS:
-        scoped = [clause for clause in state["clauses"] if spec.in_scope(clause.text)]
+        scoped = scoped_clauses(state, spec, targets)
+        reviewed.extend(f"{spec.name}|{clause.clause_id}" for clause in scoped)
         if not scoped:
             continue
         if spec.priority == "low" and budget_exhausted(running):
@@ -198,8 +205,11 @@ async def serial_review(state: ReviewState, config: RunnableConfig) -> dict[str,
         degraded,
         duration_ms,
     )
+    # reviewed_pairs 与并行拓扑同口径：串行也记录实际审过的 (专家, 条款)，
+    # 保证两条拓扑的缓存覆盖率一致（Stage 11，详见 expert_review 同名说明）。
     return {
         "findings": findings,
         "budget": budget_delta(total_in, total_out, total_cost),
         "degraded": degraded,
+        "reviewed_pairs": reviewed,
     }

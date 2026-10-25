@@ -138,7 +138,12 @@ async def expert_review(state: ReviewState, config: RunnableConfig) -> dict[str,
         duration_ms,
     )
     # 后置记账：只写自己的消耗增量，累加由 merge_budget 完成（不读-改-写整个预算）。
+    # reviewed_pairs 记录本分片实际审过的 (专家, 条款)：缓存要靠它把「审过且无问题」
+    # 也记成结论，否则正常条款每次增量都重审，成本降不下来（Stage 11）。
     return {
         "findings": findings,
         "budget": budget_delta(metrics.input_tokens, metrics.output_tokens, cost),
+        "reviewed_pairs": [
+            f"{spec.name}|{clause.clause_id}" for clause in task.clauses
+        ],
     }

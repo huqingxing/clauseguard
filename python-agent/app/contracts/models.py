@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint
@@ -199,6 +200,64 @@ class Artifact(BaseModel):
     size_bytes: conint(ge=0) = Field(..., description='产物字节数。')
 
 
+class Mode(Enum):
+    """
+    full=本次全量重审（不查缓存）；incremental=仅重审变更条款。
+    """
+
+    full = 'full'
+    incremental = 'incremental'
+
+
+class Incremental(BaseModel):
+    """
+    Stage 11：本次运行的增量重审账本（全量模式也下发，mode=full）。
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    mode: Mode = Field(
+        ..., description='full=本次全量重审（不查缓存）；incremental=仅重审变更条款。'
+    )
+    baseline_version: Optional[conint(ge=0)] = Field(
+        None, description='参与比对的基线版本号；0 表示无基线。'
+    )
+    changed_count: Optional[conint(ge=0)] = Field(
+        None, description='编号相同但内容变化的条款数。'
+    )
+    added_count: Optional[conint(ge=0)] = Field(None, description='新增条款数。')
+    removed_count: Optional[conint(ge=0)] = Field(None, description='被删除条款数。')
+    unchanged_count: Optional[conint(ge=0)] = Field(
+        None, description='内容与基线一致的条款数。'
+    )
+    reused_findings: conint(ge=0) = Field(
+        ..., description='命中缓存直接复用、未消耗 token 的 findings 条数。'
+    )
+    stale_findings: Optional[conint(ge=0)] = Field(
+        None,
+        description='因条款被删除而标记 stale 的历史 findings 条数（保留追溯，不进报告）。',
+    )
+    cache_hits: Optional[conint(ge=0)] = Field(
+        None, description='缓存命中次数（按 专家×条款 计）。'
+    )
+    cache_misses: Optional[conint(ge=0)] = Field(
+        None, description='缓存未命中次数（按 专家×条款 计）。'
+    )
+    cache_hit_rate: confloat(ge=0.0, le=1.0) = Field(
+        ..., description='命中率 = hits/(hits+misses)；无查询为 0。'
+    )
+    changed_clause_ids: Optional[list[str]] = Field(
+        None, description='changed 条款 ID 列表，前端据此高亮变更条款。'
+    )
+    added_clause_ids: Optional[list[str]] = Field(
+        None, description='added 条款 ID 列表。'
+    )
+    removed_clause_ids: Optional[list[str]] = Field(
+        None, description='removed 条款 ID 列表。'
+    )
+
+
 class RunCompleted(BaseModel):
     """
     审查运行完成，携带总用量、发现数与 Critic 质量指标。
@@ -220,6 +279,7 @@ class RunCompleted(BaseModel):
         ..., description='Critic 确定性校验的质量指标（Stage 8）。'
     )
     artifact: Optional[Artifact] = None
+    incremental: Optional[Incremental] = None
 
 
 class RunFailed(BaseModel):

@@ -40,7 +40,7 @@ from app.clients.minio_client import (
     resolve_source_from_local,
     resolve_source_from_minio,
 )
-from app.graph.state import Clause, Finding
+from app.graph.state import Clause, Finding, active_findings
 from app.parse.loader import load_document
 from app.parse.splitter import split_document
 from app.render.docx_writer import CommentSpec, DocxEditor, RenderError
@@ -161,7 +161,7 @@ def _render_docx_sync(
 def _placeholder(state: Mapping[str, Any], reason: str) -> RenderOutcome:
     """显式占位：不假装修写成功，reason 说明缺口（红线：不做假实现）。"""
     approved = bool(state.get("approved"))
-    findings = len(state.get("findings") or [])
+    findings = len(active_findings(list(state.get("findings") or [])))
     return RenderOutcome(
         status="placeholder",
         render_result=(
@@ -184,7 +184,7 @@ async def render_for_state(
     """
     contract_id = str(state.get("contract_id") or "")
     version = int(state.get("version") or 0)
-    findings = list(state.get("findings") or [])
+    findings = active_findings(list(state.get("findings") or []))
     state_clauses = list(state.get("clauses") or [])
 
     source = await resolve_source(contract_id, version, config)

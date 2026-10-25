@@ -33,8 +33,17 @@ REASON = "high_risk_pending_approval"
 
 
 def high_risk_findings(findings: list[Finding]) -> list[Finding]:
-    """挑出需要人工审批的高风险发现（仅 risk_level=high；unverified 已降级不阻断）。"""
-    return [finding for finding in findings if finding.risk_level == HIGH_LEVEL]
+    """挑出需要人工审批的高风险发现（仅 risk_level=high；unverified 已降级不阻断）。
+
+    Stage 11：stale 的历史结论不进审批——它所属条款已被删除，让人审批一条不存在的
+    条款既无意义又会阻塞整轮（审批列表里出现无法定位的条目）。stale 仍留在 state 里
+    供追溯（红线：不得静默丢弃），只是不参与任何面向本版本的决策。
+    """
+    return [
+        finding
+        for finding in findings
+        if finding.risk_level == HIGH_LEVEL and not finding.stale
+    ]
 
 
 def build_interrupt_payload(

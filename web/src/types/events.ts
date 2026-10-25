@@ -1,0 +1,148 @@
+/**
+ * 事件契约的 TS 镜像（单一事实源是 contracts/events.schema.json）。
+ *
+ * 为什么手写一份而不是生成：版本表未引入 JSON Schema -> TS 的代码生成器（铁律 5），
+ * 而前端只需要消费其中 3 个事件。字段与 schema 一一对应，改 schema 必须同步改这里；
+ * 宁可少字段也不加 schema 里没有的字段（铁律 3：禁止私加字段）。
+ */
+
+export type ReviewMode = 'full' | 'incremental'
+
+export type ClauseChangeStatus = 'changed' | 'added' | 'removed' | 'unchanged'
+
+/** run.completed.incremental：本次运行的增量账本（Stage 11）。 */
+export interface IncrementalInfo {
+  mode: ReviewMode
+  baseline_version?: number
+  changed_count?: number
+  added_count?: number
+  removed_count?: number
+  unchanged_count?: number
+  reused_findings: number
+  stale_findings?: number
+  cache_hits?: number
+  cache_misses?: number
+  cache_hit_rate: number
+  changed_clause_ids?: string[]
+  added_clause_ids?: string[]
+  removed_clause_ids?: string[]
+}
+
+export interface Usage {
+  input_tokens: number
+  output_tokens: number
+  cost_cny: number
+}
+
+export interface Quality {
+  verified_rate: number
+  rework_count: number
+  unverified_count: number
+}
+
+export interface Artifact {
+  object_key: string
+  download_url: string
+  comments_count: number
+  size_bytes: number
+}
+
+export interface RunCompletedEvent {
+  seq: number
+  ts: string
+  type: 'run.completed'
+  usage: Usage
+  findings_count: number
+  degraded?: boolean
+  quality: Quality
+  artifact?: Artifact | null
+  incremental?: IncrementalInfo | null
+}
+
+export interface InterruptItem {
+  clause_id: string
+  risk_type: string
+  risk: string
+  suggestion: string
+  clause_text: string
+}
+
+export interface InterruptEvent {
+  seq: number
+  ts: string
+  type: 'interrupt'
+  reason: string
+  payload?: {
+    reason?: string
+    contract_version?: number
+    content_hash?: string
+    items?: InterruptItem[]
+  }
+}
+
+export interface NodeEvent {
+  seq: number
+  ts: string
+  type: 'node.started' | 'node.finished' | 'node.failed'
+  node?: string
+  agent?: string
+  duration_ms?: number
+  tokens?: number
+  code?: string
+  message?: string
+}
+
+export interface MessageDeltaEvent {
+  seq: number
+  ts: string
+  type: 'message.delta'
+  agent?: string
+  text?: string
+}
+
+export type AgentStreamEvent =
+  | RunCompletedEvent
+  | InterruptEvent
+  | NodeEvent
+  | MessageDeltaEvent
+  | { seq: number; ts: string; type: string }
+
+export interface ClauseRow {
+  clause_id: string
+  /** 条款编号（跨版本的稳定身份）；无编号时回退为空串。 */
+  no: string
+  text: string
+  status: ClauseChangeStatus
+  /** 该条款在本轮是否命中缓存复用（未花 token）。 */
+  reused: boolean
+  /** 历史结论所属条款已被删除：仅追溯，不进报告。 */
+  stale: boolean
+  risk_level?: string
+}
+
+/**
+ * 从 run.completed.incremental 推导每条条款的变更状态。
+ * 纯函数（可直接单测）：ID 命中 changed/added/removed 三类之一即取该类，否则 unchanged。
+ */
+export function clauseStatusOf(clauseId: string, info: IncrementalInfo | null | undefined): ClauseChangeStatus {
+  if (!info || info.mode !== 'incremental') return 'unchanged'
+  if (info.changed_clause_ids?.includes(clauseId)) return 'changed'
+  if (info.added_clause_ids?.includes(clauseId)) return 'added'
+  if (info.removed_clause_ids?.includes(clauseId)) return 'removed'
+  return 'unchanged'
+}
+
+export const STATUS_LABEL: Record<ClauseChangeStatus, string> = {
+  changed: '已修改',
+  added: '新增',
+  removed: '已删除',
+  unchanged: '未变更',
+}
+
+/** 高风险用红、中风险用橙（与批注高亮同语义），stale 灰显。 */
+export const STATUS_TYPE: Record<ClauseChangeStatus, 'danger' | 'warning' | 'info' | 'success'> = {
+  changed: 'danger',
+  added: 'warning',
+  removed: 'info',
+  unchanged: 'success',
+}

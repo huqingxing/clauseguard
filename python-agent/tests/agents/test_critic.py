@@ -1,7 +1,7 @@
 """Stage 8 单测：critic 节点路由（打回 / 放行 / 不可路由 / 预算 / 轮数上限）。
 
 覆盖节点在三类输入下的 Command 形状：
-- 全部通过 -> 直达 human_approval（Stage 9 起的人工审批断点），update 为空；
+- 全部通过 -> 直达 cache_store（Stage 11 起：校验通过后先写缓存再进人工审批），update 为空；
 - 可路由失败 -> 墓碑删旧版 + 计数 +1 + rework 指令，并行经 Send 派发专家节点、
   串行经 goto="serial_review"（state["rework"] 承载指令）；
 - 不可路由失败（专家未注册 / 条款文本缺失）-> 标 unverified 放行，不炸整轮 run；
@@ -107,9 +107,9 @@ def _run(state: ReviewState, *, parallel: bool = True) -> tuple[Any, list[Any]]:
 # ---- 通过路径 ----
 
 
-def test_all_findings_pass_routes_to_human_approval() -> None:
+def test_all_findings_pass_routes_to_cache_store() -> None:
     command, events = _run(_state([_grounded_finding()]))
-    assert command.goto == "human_approval"
+    assert command.goto == "cache_store"
     # 无失败即无状态更新（不写墓碑/计数/指令）。
     assert not command.update
     nodes = [(e.node, e.type) for e in events if e.type in ("node.started", "node.finished")]
@@ -165,7 +165,7 @@ def test_same_expert_clause_failures_merge_reasons() -> None:
 
 def test_unregistered_expert_marked_unverified() -> None:
     command, events = _run(_state([_ungrounded_finding(agent="ghost_expert")]))
-    assert command.goto == "human_approval"
+    assert command.goto == "cache_store"
     update = command.update
     assert [f.risk_level for f in update["findings"] if isinstance(f, Finding)] == ["unverified"]
     assert any(isinstance(u, FindingTombstone) for u in update["findings"])
@@ -175,7 +175,7 @@ def test_unregistered_expert_marked_unverified() -> None:
 
 def test_missing_clause_text_marked_unverified() -> None:
     command, _ = _run(_state([_ungrounded_finding(clause_id="ghost-clause")], clauses=[]))
-    assert command.goto == "human_approval"
+    assert command.goto == "cache_store"
     marked = [f for f in command.update["findings"] if isinstance(f, Finding)]
     assert [f.risk_level for f in marked] == ["unverified"]
 
@@ -186,7 +186,7 @@ def test_missing_clause_text_marked_unverified() -> None:
 def test_budget_exhausted_marks_unverified_and_degrades() -> None:
     exhausted = Budget(max_tokens=10, max_cost_cny=50.0, deadline_ts=0, spent_input_tokens=100)
     command, events = _run(_state([_ungrounded_finding()], budget=exhausted))
-    assert command.goto == "human_approval"
+    assert command.goto == "cache_store"
     assert command.update["degraded"] is True
     marked = [f for f in command.update["findings"] if isinstance(f, Finding)]
     assert [f.risk_level for f in marked] == ["unverified"]
@@ -201,7 +201,7 @@ def test_max_retries_marks_unverified_without_rework() -> None:
     command, events = _run(
         _state([_ungrounded_finding()], critic_failures=MAX_CRITIC_RETRIES)
     )
-    assert command.goto == "human_approval"
+    assert command.goto == "cache_store"
     assert command.update.get("critic_failures") is None  # 不再递增
     assert "rework" not in command.update  # 不再产生打回指令
     assert command.update.get("degraded") is None  # 非预算原因，不降级

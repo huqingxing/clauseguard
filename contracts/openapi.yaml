@@ -17,7 +17,10 @@ paths:
       tags: [review]
       summary: 创建审查任务
       operationId: createReview
-      description: 针对已上传的合同发起一次审查运行，返回 review_id 与 SSE 订阅地址。
+      description: >-
+        针对已上传的合同发起一次审查运行，返回 review_id 与 SSE 订阅地址。
+        Stage 11：mode=incremental 时只重审相对 base_version 变更/新增的条款，
+        未变更条款的既有结论走缓存复用（base_version 省略时由编排层按 version-1 推断）。
       requestBody:
         required: true
         content:
@@ -170,6 +173,27 @@ components:
           type: string
           format: uuid
           description: 已上传合同的 ID。
+        version:
+          type: integer
+          minimum: 0
+          default: 0
+          description: >-
+            本次审查对应的合同版本号。Stage 11：增量重审按版本号定位基线快照，
+            与 base_version 共同决定 diff 的比对范围。
+        mode:
+          type: string
+          enum: [full, incremental]
+          default: full
+          description: >-
+            Stage 11：full=全量重审（不查缓存，成本对比基线）；
+            incremental=仅重审变更条款，未变更条款复用缓存结论。
+        base_version:
+          type: integer
+          minimum: 0
+          default: 0
+          description: >-
+            Stage 11：增量重审的基线版本号；0 表示由编排层按 version-1 推断。
+            仅 mode=incremental 时有意义。
     ReviewCreateResponse:
       type: object
       required: [review_id, stream_url]

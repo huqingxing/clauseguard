@@ -39,7 +39,20 @@ from app.agents.spec import ExpertSpec, build_expert_agent, default_chat_model
 from app.db import DbPool, InMemoryRunRegistry, RunRegistry, thread_id_for
 from app.events import SENTINEL, EventEmitter, EventType
 from app.graph.build import build_graph
-from app.graph.state import Budget, ReviewState, ReviewTask
+from app.graph.state import (
+    FULL_MODE,
+    INCREMENTAL_MODE,
+    Budget,
+    IncrementalInfo,
+    ReviewState,
+    ReviewTask,
+    active_findings,
+)
+from app.incremental.cache import (
+    STORE_CONFIG_KEY,
+    IncrementalStore,
+    default_incremental_store,
+)
 
 logger = logging.getLogger("app.main")
 
@@ -83,7 +96,13 @@ def _mock_content_hash(contract_id: str) -> str:
 
 
 def _make_initial_state(
-    contract_id: str, settings: AgentSettings | None = None, content_hash: str = ""
+    contract_id: str,
+    settings: AgentSettings | None = None,
+    content_hash: str = "",
+    *,
+    version: int = 0,
+    mode: str = FULL_MODE,
+    base_version: int = 0,
 ) -> ReviewState:
     # 预算来自编排配置（token/成本/时限三闸）；deadline<=0 表示不设时限。
     resolved = settings if settings is not None else get_agent_settings()
@@ -97,7 +116,7 @@ def _make_initial_state(
     )
     return {
         "contract_id": contract_id,
-        "version": 0,
+        "version": version,
         "clauses": [],
         "findings": [],
         "budget": budget,
@@ -115,6 +134,11 @@ def _make_initial_state(
         "content_hash": content_hash or _mock_content_hash(contract_id),
         # 回写渲染结果占位（Stage 9 仅占位）。
         "render_result": "",
+        # ---- Stage 11 增量重审入参 ----
+        # mode=incremental 时 diff 节点按 base_version 取基线；缺省 base_version=0 表示
+        # 由 diff 节点按 version-1 推断（Java 可显式指定基线版本）。
+        "review_mode": mode,
+        "base_version": base_version,
     }
 
 
@@ -146,8 +170,11 @@ def _quality_of(result: ReviewState) -> dict[str, Any]:
       MAX_CRITIC_RETRIES）；
     - unverified_count：终态 unverified 档 finding 条数（含引擎层引用丢空降级
       与 Critic 打回超限降级）。
+
+    Stage 11：口径只算「本版本有效」的 findings（剔除 stale）——stale 是历史追溯记录，
+    计入质量指标会让「本轮审查质量」被上版本已删条款的旧结论稀释。
     """
-    findings = result.get("findings") or []
+    findings = active_findings(list(result.get("findings") or []))
     total = len(findings)
     unverified = sum(1 for finding in findings if finding.risk_level == "unverified")
     verified_rate = (total - unverified) / total if total else 1.0
@@ -156,6 +183,19 @@ def _quality_of(result: ReviewState) -> dict[str, Any]:
         "rework_count": int(result.get("critic_failures") or 0),
         "unverified_count": unverified,
     }
+
+
+def _incremental_of(result: ReviewState) -> dict[str, Any]:
+    """从图终态取增量账本（Stage 11），原样进 run.completed.incremental。
+
+    缺省（非增量/无 diff 节点结果）时补一份 mode=full 的账本而不是省略字段：
+    报告必须写明「本次是 full 还是 incremental」，缺省会让前端无法区分
+    「全量」与「契约没下发」，只能猜。
+    """
+    info = result.get("incremental")
+    if not isinstance(info, IncrementalInfo):
+        return {"mode": FULL_MODE, "reused_findings": 0, "cache_hit_rate": 0.0}
+    return info.model_dump(mode="json")
 
 
 async def _persist_event_seq(registry: Any, run_id: str, emitter: EventEmitter) -> None:
@@ -256,7 +296,7 @@ async def _run_pipeline(
             return False
         # 完成：用量/发现数/降级标记/质量指标全部来自图终态。
         budget = result.get("budget")
-        findings = result.get("findings") or []
+        findings = active_findings(list(result.get("findings") or []))
         # resume 调用完成的是曾被 human_approval 中断的运行，补发该节点 NODE_FINISHED
         # （节点自身在 resume 重跑时不发射，详见 human_approval 模块 docstring）。
         if resume is not None:
@@ -276,6 +316,7 @@ async def _run_pipeline(
             findings_count=len(findings),
             degraded=bool(result.get("degraded")),
             quality=_quality_of(result),
+            incremental=_incremental_of(result),
             **artifact_field,
         )
         await _persist_event_seq(registry, run_id, emitter)
@@ -312,12 +353,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(
-    registry: RunRegistry | None = None, checkpointer: Any = None
+    registry: RunRegistry | None = None,
+    checkpointer: Any = None,
+    incremental_store: IncrementalStore | None = None,
 ) -> FastAPI:
     """创建 FastAPI 应用。
 
     registry/checkpointer 可注入（测试）：传入同一实例即可模拟「进程重启后持久化存储仍在」，
     从而验证断点恢复与 seq 续接，而不依赖外部 Postgres。
+    incremental_store 可注入（测试）：替换缓存后端，验证命中率/一致性而不依赖真实目录。
 
     无论是否注入，app.state.checkpointer/registry 在此处即落默认值（内存实现），保证即使
     运行环境不触发 lifespan（如 httpx.ASGITransport 直连测试）也能取到，不会 KeyError。
@@ -329,13 +373,20 @@ def create_app(
     app.state.checkpointer = checkpointer if injected else MemorySaver()
     app.state.registry = registry if registry is not None else InMemoryRunRegistry()
     app.state.db_pool = None
+    app.state.incremental_store = (
+        incremental_store if incremental_store is not None else default_incremental_store()
+    )
 
     @app.get("/healthz")
     async def healthz() -> JSONResponse:
         return JSONResponse({"status": "ok", "service": "python-agent"})
 
     def _build_run_config(
-        emitter: EventEmitter, thread_id: str, trace_id: str, settings: AgentSettings
+        emitter: EventEmitter,
+        thread_id: str,
+        trace_id: str,
+        settings: AgentSettings,
+        store: IncrementalStore | None = None,
     ) -> RunnableConfig:
         # 并发信号量按 run 创建：请求间相互隔离；emitter/agent_factory 同样按 run 新建，
         # 运行态依赖走 config（铁律 4），不跨 run 共享可变状态。
@@ -347,6 +398,8 @@ def create_app(
                 "thread_id": thread_id,
                 "limiter": limiter,
                 "agent_factory": _agent_factory(settings),
+                # Stage 11：缓存后端按 run 注入（可测试替换）；未注入时节点回落进程默认。
+                STORE_CONFIG_KEY: store if store is not None else default_incremental_store(),
             }
         }
 
@@ -393,14 +446,29 @@ def create_app(
         raw: Any = await request.json()
         contract_id = (raw or {}).get("contract_id", "")
         content_hash = (raw or {}).get("content_hash", "")
+        # Stage 11：version/mode/base_version 由 Java 透传（前端「仅重审变更」按钮即
+        # mode=incremental）。未传即 version=0 + full，与既有调用方完全兼容。
+        version = int((raw or {}).get("version") or 0)
+        mode_raw = str((raw or {}).get("mode") or FULL_MODE).lower()
+        mode = INCREMENTAL_MODE if mode_raw == INCREMENTAL_MODE else FULL_MODE
+        base_version = int((raw or {}).get("base_version") or 0)
         trace_id = parse_traceparent(request.headers.get("traceparent"))
         run_id = f"run-{uuid.uuid4().hex[:8]}"
         emitter = EventEmitter()
         settings = get_agent_settings()
         graph = build_graph(settings, app.state.checkpointer)
-        thread_id = thread_id_for(contract_id, 0)
-        config = _build_run_config(emitter, thread_id, trace_id, settings)
-        initial_state = _make_initial_state(contract_id, settings, content_hash)
+        thread_id = thread_id_for(contract_id, version)
+        config = _build_run_config(
+            emitter, thread_id, trace_id, settings, app.state.incremental_store
+        )
+        initial_state = _make_initial_state(
+            contract_id,
+            settings,
+            content_hash,
+            version=version,
+            mode=mode,
+            base_version=base_version,
+        )
         # run_id → 断点元信息落库（Postgres）或内存（测试），重启后仍可定位 thread_id。
         # event_seq 随中断/完成时更新（_persist_event_seq），resume 端点据此续接事件序号。
         await app.state.registry.put(
@@ -408,7 +476,7 @@ def create_app(
             {
                 "thread_id": thread_id,
                 "contract_id": contract_id,
-                "version": 0,
+                "version": version,
                 "content_hash": initial_state["content_hash"],
                 "trace_id": trace_id,
                 "event_seq": 0,
@@ -456,7 +524,9 @@ def create_app(
         # 图状态写入会清掉断点（见 _persist_event_seq  docstring）。
         emitter = EventEmitter()
         emitter._seq = int(info.get("event_seq") or 0)
-        config = _build_run_config(emitter, thread_id, trace_id, settings)
+        config = _build_run_config(
+            emitter, thread_id, trace_id, settings, app.state.incremental_store
+        )
 
         async def event_stream() -> AsyncIterator[str]:
             run_task = asyncio.create_task(

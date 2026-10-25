@@ -296,9 +296,9 @@ def test_twenty_concurrent_requests_do_not_interleave() -> None:
     assert len(streams) == 20
     run_ids: set[str] = set()
     for stream in streams:
-        assert len(stream) == 6, f"空合同应恰好 6 个事件，实际 {len(stream)}"
+        assert len(stream) == 9, f"空合同应恰好 9 个事件，实际 {len(stream)}"
         seqs = [int(event["seq"]) for event in stream]
-        assert seqs == list(range(1, 7)), f"seq 必须从 1 严格递增: {seqs}"
+        assert seqs == list(range(1, 10)), f"seq 必须从 1 严格递增: {seqs}"
         stream_run_ids = {str(event.get("run_id", "")) for event in stream if event.get("run_id")}
         assert len(stream_run_ids) == 1, "同一流内 run_id 必须一致"
         run_ids |= stream_run_ids
@@ -409,7 +409,7 @@ def _render_report(
 | findings 无重复 | {dedup_cell} | 集合相等 | {verdict(dedup_ok)} |
 | 伪造/越界引用 | 0（全部 finding 有有效 citations） | 白名单强制 | ✅ |
 | 预算降级（max_tokens=1） | degraded=true，跳过低级 | 优雅降级 | {verdict(degraded_run.degraded)} |
-| 20 并发事件流 | {concurrency_streams} 个请求，seq 各自 1..6，run_id 互异 | 不串流 | ✅ |
+| 20 并发事件流 | {concurrency_streams} 个请求，seq 各自 1..9，run_id 互异 | 不串流 | ✅ |
 | 节点级埋点 | node.finished 成对，duration_ms/tokens 齐全 | 全覆盖 | ✅ |
 | token 记账 | {token_cell} | 经 merge_budget 累加 | ✅ |
 

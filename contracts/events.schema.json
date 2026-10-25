@@ -237,12 +237,97 @@
             },
             { "type": "null" }
           ]
+        },
+        "incremental": {
+          "anyOf": [
+            {
+              "type": "object",
+              "description": "Stage 11：本次运行的增量重审账本（全量模式也下发，mode=full）。",
+              "required": ["mode", "reused_findings", "cache_hit_rate"],
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": ["full", "incremental"],
+                  "description": "full=本次全量重审（不查缓存）；incremental=仅重审变更条款。"
+                },
+                "baseline_version": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "参与比对的基线版本号；0 表示无基线。"
+                },
+                "changed_count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "编号相同但内容变化的条款数。"
+                },
+                "added_count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "新增条款数。"
+                },
+                "removed_count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "被删除条款数。"
+                },
+                "unchanged_count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "内容与基线一致的条款数。"
+                },
+                "reused_findings": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "命中缓存直接复用、未消耗 token 的 findings 条数。"
+                },
+                "stale_findings": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "因条款被删除而标记 stale 的历史 findings 条数（保留追溯，不进报告）。"
+                },
+                "cache_hits": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "缓存命中次数（按 专家×条款 计）。"
+                },
+                "cache_misses": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "缓存未命中次数（按 专家×条款 计）。"
+                },
+                "cache_hit_rate": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "命中率 = hits/(hits+misses)；无查询为 0。"
+                },
+                "changed_clause_ids": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "changed 条款 ID 列表，前端据此高亮变更条款。"
+                },
+                "added_clause_ids": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "added 条款 ID 列表。"
+                },
+                "removed_clause_ids": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "removed 条款 ID 列表。"
+                }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
         }
       },
       "additionalProperties": false,
       "examples": [
         { "seq": 8, "ts": "2026-10-22T10:00:10Z", "type": "run.completed", "usage": { "input_tokens": 21000, "output_tokens": 4200, "cost_cny": 0.86 }, "findings_count": 17, "degraded": false, "quality": { "verified_rate": 0.9412, "rework_count": 1, "unverified_count": 1 } },
-        { "seq": 14, "ts": "2026-10-24T13:05:00Z", "type": "run.completed", "usage": { "input_tokens": 21000, "output_tokens": 4200, "cost_cny": 0.86 }, "findings_count": 17, "degraded": false, "quality": { "verified_rate": 0.9412, "rework_count": 1, "unverified_count": 1 }, "artifact": { "object_key": "artifacts/contract-7f3a/v1/annotated.docx", "download_url": "http://localhost:9000/clauseguard/artifacts/contract-7f3a/v1/annotated.docx?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20261024%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261024T130500Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "comments_count": 5, "size_bytes": 48213 } }
+        { "seq": 14, "ts": "2026-10-24T13:05:00Z", "type": "run.completed", "usage": { "input_tokens": 21000, "output_tokens": 4200, "cost_cny": 0.86 }, "findings_count": 17, "degraded": false, "quality": { "verified_rate": 0.9412, "rework_count": 1, "unverified_count": 1 }, "artifact": { "object_key": "artifacts/contract-7f3a/v1/annotated.docx", "download_url": "http://localhost:9000/clauseguard/artifacts/contract-7f3a/v1/annotated.docx?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20261024%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261024T130500Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "comments_count": 5, "size_bytes": 48213 } },
+        { "seq": 16, "ts": "2026-10-25T09:12:00Z", "type": "run.completed", "usage": { "input_tokens": 1400, "output_tokens": 280, "cost_cny": 0.06 }, "findings_count": 18, "degraded": false, "quality": { "verified_rate": 1.0, "rework_count": 0, "unverified_count": 0 }, "incremental": { "mode": "incremental", "baseline_version": 1, "changed_count": 2, "added_count": 1, "removed_count": 1, "unchanged_count": 36, "reused_findings": 15, "stale_findings": 1, "cache_hits": 15, "cache_misses": 2, "cache_hit_rate": 0.8824, "changed_clause_ids": ["doc#0004", "doc#0011"], "added_clause_ids": ["doc#0039"], "removed_clause_ids": ["doc#0021"] } }
       ]
     },
     "RunFailed": {

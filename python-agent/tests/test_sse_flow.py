@@ -4,8 +4,9 @@
 同步测试内直接驱动事件循环即可覆盖异步路径。
 
 Stage 7 起拓扑为 ingest -> dispatch -> (Send fan-out)，空合同（无条款）时 dispatch
-不分发任何分片直接收尾，故事件序列为 run.started → ingest 起止 → dispatch 起止 →
-run.completed（真实 usage/findings_count/degraded 来自图终态）。
+不分发任何分片直接收尾。Stage 11 起 ingest 之后插入 diff 节点（算版本 diff 与缓存复用），
+故事件序列为 run.started → ingest 起止 → diff 起止（含一条 message.delta 摘要）→
+dispatch 起止 → run.completed（真实 usage/findings_count/degraded 来自图终态）。
 """
 
 import asyncio
@@ -27,8 +28,14 @@ VALIDATOR = Draft202012Validator(json.loads(SCHEMA_PATH.read_text(encoding="utf-
 # 期望事件顺序（与任务验收一致）。
 EXPECTED_ORDER: list[EventType] = [
     EventType.RUN_STARTED,
+    # ingest 起止
     EventType.NODE_STARTED,
     EventType.NODE_FINISHED,
+    # diff 起止（Stage 11：中间一条增量摘要 message.delta）
+    EventType.NODE_STARTED,
+    EventType.MESSAGE_DELTA,
+    EventType.NODE_FINISHED,
+    # dispatch 起止（空合同不派发任何分片）
     EventType.NODE_STARTED,
     EventType.NODE_FINISHED,
     EventType.RUN_COMPLETED,
