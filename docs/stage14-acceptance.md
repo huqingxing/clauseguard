@@ -5,7 +5,7 @@
 > 唯一一处需要新人注意的环境坑：`JAVA_HOME` 必须是 JDK 21（见 §6）。
 
 - 日期：2026-10-26
-- 测时 commit：`27365f1` + Stage 14 工作区改动
+- 代码版本：Stage 14 提交（`git log` 中「Stage 14 可观测性与交付物」；验收即在该版本上跑出）
 - 关键产物：`docs/benchmark.md`（压测）、`README.md`（交付）、`docs/ADR-0002..0004`、
   `docs/demo-script.md`（90 秒分镜）、`docs/talk-outline.md`（3 分钟提纲）
 

@@ -5,7 +5,7 @@
 > 这一条决定了「扩容该加 worker，还是该加机器」。
 
 - 日期：2026-10-26
-- commit：`27365f1` + Stage 14 改动（可观测性/压测脚本）
+- 代码版本：Stage 14 提交（`git log` 中「Stage 14 可观测性与交付物」；压测在该版本上测得）
 - 被测对象：Python 编排层 `POST /v1/runs`（`python-agent`，uvicorn **单 worker**）
 - 压测工具：Locust 2.47.0，`deploy/locust/locustfile.py`
 
