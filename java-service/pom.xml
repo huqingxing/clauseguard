@@ -63,6 +63,12 @@
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Stage 14：SimpleTracer（不依赖 collector 的 Tracer 测试替身），版本由 Boot BOM 管理 -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-tracing-test</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- Stage 4：唯一 MySQL 访问方——JPA 实体 + Flyway 建表 -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -111,6 +117,17 @@
     <dependency>
       <groupId>org.springframework.ai</groupId>
       <artifactId>spring-ai-model</artifactId>
+    </dependency>
+    <!-- Stage 14：可观测性（任务书要求 OTel → Langfuse OTLP）。
+         bridge 提供 Micrometer Tracing 的 Tracer 实现，exporter 负责 OTLP/HTTP 上报；
+         两者版本均由 Spring Boot 3.5 BOM 管理，不自选版本。 -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-tracing-bridge-otel</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-exporter-otlp</artifactId>
     </dependency>
   </dependencies>
 

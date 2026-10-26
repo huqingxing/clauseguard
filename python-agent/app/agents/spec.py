@@ -16,6 +16,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
 
+from app.agents.mock_model import mock_chat_model
 from app.agents.settings import AgentSettings, get_agent_settings
 from app.clients.openai_compat import OpenAICompatChatModel
 from app.prompts import load_prompt
@@ -55,9 +56,20 @@ class ExpertSpec:
         return load_prompt(self.name, self.prompt_version, suffix="retry")
 
 
-def default_chat_model(settings: AgentSettings | None = None) -> OpenAICompatChatModel:
-    """按配置构造 OpenAI 兼容模型；模型来源唯一入口，节点不直接 new。"""
+def default_chat_model(
+    settings: AgentSettings | None = None, expert: str = ""
+) -> BaseChatModel:
+    """按配置返回聊天模型；模型来源唯一入口，节点不直接 new。
+
+    Stage 14：model_backend=mock 时返回确定性替身（压测/无密钥演示），
+    默认 live 走 OpenAI 兼容接口——不按「有没有密钥」自动降级，避免掩盖配置错误。
+    """
     resolved = settings or get_agent_settings()
+    if resolved.model_backend == "mock":
+        logger.warning(
+            "model backend = mock（expert=%s）：仅供压测/离线演示，非真实推理", expert or "-"
+        )
+        return mock_chat_model(expert or "commercial", resolved.mock_latency_s)
     return OpenAICompatChatModel(
         base_url=resolved.llm_base_url,
         api_key=resolved.llm_api_key,
@@ -73,7 +85,7 @@ def build_expert_agent(
 ) -> _Agent:
     """按专家定义组装单体 ReAct Agent：文件 prompt + 该专家的工具子集。"""
     return create_agent(
-        model or default_chat_model(),
+        model or default_chat_model(expert=spec.name),
         tools=list(spec.tools),
         system_prompt=spec.load_system_prompt(),
         name=spec.agent_name,

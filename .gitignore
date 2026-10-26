@@ -26,3 +26,6 @@ dist/
 # 评测运行产物（baseline 入库供 CI 对比，其余为可重跑产物）
 eval/out/*
 !eval/out/metrics-baseline.json
+
+# 演示合同由脚本生成（docx 是二进制、可复现，不入库）
+deploy/demo/*.docx

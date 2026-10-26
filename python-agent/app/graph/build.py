@@ -29,12 +29,14 @@ checkpointer 由 main.py 编译时注入（PostgresSaver，thread_id=contract_id
 本模块只负责节点与边的装配，不持有任何连接资源。
 """
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from app.agents.registry import get_expert
 from app.agents.settings import AgentSettings, get_agent_settings
 from app.graph.nodes.cache_store import cache_store
 from app.graph.nodes.critic import critic
@@ -45,7 +47,68 @@ from app.graph.nodes.human_approval import human_approval
 from app.graph.nodes.ingest import ingest
 from app.graph.nodes.render import render
 from app.graph.nodes.serial_review import serial_review
-from app.graph.state import ReviewState
+from app.graph.state import Budget, ReviewState
+from app.observability import mark_suspended, node_span, record_usage
+
+NodeFn = Callable[[Any, RunnableConfig], Awaitable[Any]]
+# describe(state) -> (span 名, agent 名或 None)：专家分片的名字与 agent 都来自运行态载荷。
+NodeDescriber = Callable[[Any], "tuple[str, str | None]"]
+
+
+def _annotate_usage(span: Any, result: Any) -> None:
+    """把节点返回的预算增量写到 span 上（含 agent 名、tokens）。
+
+    Budget 是「只携带增量」的结构（见 state.budget_delta），节点自己只报花了多少，
+    所以这里读到的就是本节点消耗，不需要做前后差值——避免并发分片互相串账。
+    """
+    if not isinstance(result, dict):
+        return
+    delta = result.get("budget")
+    if isinstance(delta, Budget):
+        record_usage(
+            span,
+            input_tokens=delta.spent_input_tokens,
+            output_tokens=delta.spent_output_tokens,
+            cost_cny=delta.spent_cost_cny,
+        )
+
+
+def _traced(name: str, fn: NodeFn, describe: NodeDescriber | None = None) -> Any:
+    """给图节点套一层 span（Stage 14）。
+
+    为什么在装配层包而不是逐个节点里写埋点：节点只该关心业务，重复写 9 遍
+    「开 span/关 span/记 token」必然漂移（漏一个节点就看不出链路断在哪）；包在这里
+    所有节点天然一致，新增节点也不会漏。
+    父上下文由 contextvar 传播——LangGraph 在 run span 内部创建任务，子任务复制上下文，
+    因此无需显式传 parent。
+    """
+
+    async def traced_node(state: Any, config: RunnableConfig) -> Any:
+        span_name, agent = describe(state) if describe is not None else (name, None)
+        with node_span(span_name, agent=agent) as span:
+            try:
+                result = await fn(state, config)
+            except BaseException as exc:
+                # interrupt() 是 LangGraph 的「正常挂起」控制流而非故障：标成 OK 后原样上抛
+                # （吞掉会破坏断点语义），否则审批断点在链路里永远显示为红色错误。
+                if exc.__class__.__name__ == "GraphInterrupt":
+                    mark_suspended(span)
+                raise
+            _annotate_usage(span, result)
+            return result
+
+    return traced_node
+
+
+def _expert_describe(state: Any) -> tuple[str, str | None]:
+    """专家分片的 span 名与 agent 名取自运行态载荷（Send 只带 review_task）。"""
+    task = state.get("review_task") if isinstance(state, dict) else None
+    expert = getattr(task, "expert", "") or "unknown"
+    if expert == "unknown":
+        return "review.unknown", None
+    # agent 名与事件流 node.started.agent 保持同一口径（spec.agent_name），
+    # 否则链路图与事件流对不上号，排查时要在两套名字之间翻译。
+    return f"review.{expert}", get_expert(expert).agent_name
 
 
 def build_graph(
@@ -59,28 +122,28 @@ def build_graph(
     resolved = settings if settings is not None else get_agent_settings()
     parallel = resolved.execution_mode != "serial"
     builder = StateGraph(ReviewState)
-    builder.add_node("ingest", ingest)
+    builder.add_node("ingest", _traced("ingest", ingest))
 
     # critic 的打回目标随拓扑而变（Send 载荷 vs serial_review），用闭包把模式
     # 捕获进节点——运行态依赖走参数/注入，不用模块级全局变量（铁律 4）。
     async def critic_node(state: ReviewState, config: RunnableConfig) -> Any:
         return await critic(state, config, parallel=parallel)
 
-    builder.add_node("critic", critic_node)
-    builder.add_node("cache_store", cache_store)
-    builder.add_node("human_approval", human_approval)
-    builder.add_node("render", render)
-    builder.add_node("diff", diff_node)
+    builder.add_node("critic", _traced("critic", critic_node))
+    builder.add_node("cache_store", _traced("cache_store", cache_store))
+    builder.add_node("human_approval", _traced("human_approval", human_approval))
+    builder.add_node("render", _traced("render", render))
+    builder.add_node("diff", _traced("diff", diff_node))
     if not parallel:
-        builder.add_node("serial_review", serial_review)
+        builder.add_node("serial_review", _traced("serial_review", serial_review))
         builder.add_edge(START, "ingest")
         builder.add_edge("ingest", "diff")
         builder.add_edge("diff", "serial_review")
         # 串行模式的打回也回到 serial_review（只重审指令条款），再汇入 critic。
         builder.add_edge("serial_review", "critic")
     else:
-        builder.add_node("dispatch", dispatch)
-        builder.add_node("expert_review", expert_review)
+        builder.add_node("dispatch", _traced("dispatch", dispatch))
+        builder.add_node("expert_review", _traced("expert_review", expert_review, _expert_describe))
         builder.add_edge(START, "ingest")
         builder.add_edge("ingest", "diff")
         builder.add_edge("diff", "dispatch")

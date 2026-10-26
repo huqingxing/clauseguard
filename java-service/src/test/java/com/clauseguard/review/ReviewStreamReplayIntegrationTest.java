@@ -31,7 +31,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(ReviewController.class)
 @AutoConfigureMockMvc
-@Import(ReviewStreamReplayIntegrationTest.Beans.class)
+@Import({ReviewStreamReplayIntegrationTest.Beans.class,
+        com.clauseguard.observability.TraceContextSupport.class})
 class ReviewStreamReplayIntegrationTest {
 
     @Autowired
@@ -110,10 +111,12 @@ class ReviewStreamReplayIntegrationTest {
                 PythonAgentClient agentClient,
                 CircuitBreakerRegistry circuitBreakerRegistry,
                 com.fasterxml.jackson.databind.ObjectMapper mapper,
-                com.clauseguard.contract.ContractRepository contractRepository) {
+                com.clauseguard.contract.ContractRepository contractRepository,
+                com.clauseguard.observability.TraceContextSupport traceSupport) {
             return new ReviewService(
                     reviewRepository, reviewEventRepository, approvalRepository,
-                    replayStore, agentClient, circuitBreakerRegistry, mapper, contractRepository);
+                    replayStore, agentClient, circuitBreakerRegistry, mapper, contractRepository,
+                    traceSupport);
         }
     }
 }

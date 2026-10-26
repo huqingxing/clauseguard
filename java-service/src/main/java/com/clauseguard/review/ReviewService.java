@@ -17,6 +17,7 @@ import com.clauseguard.contract.domain.Contract;
 import com.clauseguard.events.AgentEvent;
 import com.clauseguard.events.EventReplayStore;
 import com.clauseguard.events.StoredEvent;
+import com.clauseguard.observability.TraceContextSupport;
 import com.clauseguard.review.ContractChangedException;
 import com.clauseguard.review.domain.Approval;
 import com.clauseguard.review.domain.Review;
@@ -71,6 +72,7 @@ public class ReviewService {
     private final CircuitBreaker circuitBreaker;
     private final ObjectMapper mapper;
     private final ContractRepository contractRepository;
+    private final TraceContextSupport traceSupport;
 
     private final Map<String, Set<LiveSubscription>> liveEmitters = new ConcurrentHashMap<>();
     private final Map<String, Boolean> subscribing = new ConcurrentHashMap<>();
@@ -83,7 +85,8 @@ public class ReviewService {
             PythonAgentClient agentClient,
             CircuitBreakerRegistry circuitBreakerRegistry,
             ObjectMapper mapper,
-            ContractRepository contractRepository) {
+            ContractRepository contractRepository,
+            TraceContextSupport traceSupport) {
         this.reviewRepository = reviewRepository;
         this.eventRepository = eventRepository;
         this.approvalRepository = approvalRepository;
@@ -92,6 +95,7 @@ public class ReviewService {
         this.circuitBreaker = circuitBreakerRegistry.circuitBreaker("pythonAgent");
         this.mapper = mapper;
         this.contractRepository = contractRepository;
+        this.traceSupport = traceSupport;
     }
 
     /**
@@ -102,6 +106,18 @@ public class ReviewService {
      * 版本缺省取合同当前版本，source（文件在哪/怎么取）随运行请求透传给 Python。
      */
     public ReviewCreateResponse createReview(ReviewCreateRequest request, String incomingTraceparent) {
+        // Stage 14：Java 侧这一段（校验 + 落库 + 触发）单独成一个 span，并作为
+        // 透传给 Python 的 traceparent 来源——Python 的每个节点 span 都是它的子 span。
+        String mode = request.getMode() == null ? "full" : request.getMode().getValue();
+        Map<String, String> tags = new LinkedHashMap<>();
+        tags.put("clauseguard.contract.id", String.valueOf(request.getContractId()));
+        tags.put("clauseguard.review.mode", mode);
+        return traceSupport.inSpan(
+                "review.create", tags, () -> doCreateReview(request, incomingTraceparent, mode));
+    }
+
+    private ReviewCreateResponse doCreateReview(
+            ReviewCreateRequest request, String incomingTraceparent, String mode) {
         String contractId = request.getContractId().toString();
         Contract contract = contractRepository.findFirstByIdOrderByVersionDesc(contractId)
                 .orElseThrow(() -> new ContractNotFoundException(contractId));
@@ -121,9 +137,9 @@ public class ReviewService {
         reviewRepository.save(review);
 
         String streamUrl = "/api/v1/reviews/" + reviewId + "/stream";
-        String traceparent = (incomingTraceparent != null && !incomingTraceparent.isBlank())
-                ? incomingTraceparent : generateTraceparent();
-        String mode = request.getMode() == null ? "full" : request.getMode().getValue();
+        // 当前 span（review.create）优先：它才是本服务此刻的真实上下文；未启用追踪时
+        // 退化为透传调用方头或本地生成，保证 Python 侧始终有一条可聚合的 trace。
+        String traceparent = traceSupport.resolveTraceparent(incomingTraceparent);
         int baseVersion = request.getBaseVersion() == null ? 0 : Math.max(0, request.getBaseVersion());
         subscribeToAgent(
                 reviewId, contractId, traceparent, version, mode, baseVersion, sourceOf(contractId, contract));
@@ -445,12 +461,13 @@ public class ReviewService {
     }
 
     /**
-     * W3C traceparent：00-<32hex trace>-<16hex span>-01。无传入时由网关生成。
+     * W3C traceparent：优先取当前 span（追踪启用时），否则本地生成。
+     *
+     * <p>审批恢复路径用它：恢复是同一笔业务操作的续跑，若当前有活动 span 就沿用它，
+     * 审计侧看到的仍是同一条 trace 的后续片段。
      */
     public String generateTraceparent() {
-        return "00-" + UUID.randomUUID().toString().replace("-", "")
-                + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16)
-                + "-01";
+        return traceSupport.resolveTraceparent(null);
     }
 
     private long parseLastEventId(String lastEventId) {

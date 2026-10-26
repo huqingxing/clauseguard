@@ -28,6 +28,11 @@ class AgentSettings(BaseSettings):
     llm_temperature: float = 0.0
     llm_max_tokens: int | None = 2048
     llm_timeout_s: float = 60.0
+    # 模型供给来源：live=真实 OpenAI 兼容模型；mock=确定性替身（压测/无密钥演示）。
+    # 为什么做成显式开关而非自动降级：缺密钥时静默走替身会让人误以为「模型跑通了」。
+    model_backend: Literal["live", "mock"] = "live"
+    # 替身每次调用的固定延迟（秒），代表模型思考时间；压测时延由它主导。
+    mock_latency_s: float = 0.12
 
     # 成本估算单价（元 / 1K tokens），仅用于预算控制与 run.completed 的 cost_cny；
     # 默认值对应 DashScope qwen 档位，接其他供应商时按实际价格覆盖。

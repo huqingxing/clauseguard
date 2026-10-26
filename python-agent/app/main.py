@@ -20,7 +20,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import re
 import sys
 import time
 import uuid
@@ -56,6 +55,13 @@ from app.incremental.cache import (
     IncrementalStore,
     default_incremental_store,
 )
+from app.observability import (
+    record_usage,
+    run_span,
+    setup_tracing,
+    shutdown_tracing,
+    trace_id_from,
+)
 
 logger = logging.getLogger("app.main")
 
@@ -71,22 +77,14 @@ if not _app_root.handlers:
     _app_root.propagate = False
 
 
-# W3C traceparent：版本-traceid-spanid-flags，全小写十六进制。
-_TRACEPARENT_RE = re.compile(r"^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$")
-
-
 def parse_traceparent(header: str | None) -> str:
     """W3C traceparent -> trace_id。
 
-    为什么不引 opentelemetry：版本表未列 OTel，铁律 5 禁止引入版本表外依赖；本阶段只把
-    trace_id 透传到 run.started，故直接解析头。后续阶段若引入 opentelemetry-api，可在此升级为
-    真实 SpanContext 注入，调用方接口保持稳定。
+    Stage 14：解析与校验下沉到 app/observability（与 OTel 父上下文提取同一套正则与
+    全零校验），此处保留函数名供既有调用方与测试使用，避免两处解析口径漂移。
+    无法解析时本地新生成——保证事件流的 trace_id 永远非空，前端按它聚合可见。
     """
-    if header:
-        match = _TRACEPARENT_RE.match(header.strip())
-        if match:
-            return match.group(2)
-    return uuid.uuid4().hex
+    return trace_id_from(header)
 
 
 def _mock_content_hash(contract_id: str) -> str:
@@ -159,7 +157,8 @@ def _agent_factory(settings: AgentSettings) -> Any:
     def factory(spec: ExpertSpec) -> Any:
         agent = cache.get(spec.name)
         if agent is None:
-            agent = build_expert_agent(spec, default_chat_model(settings))
+            # 传 expert 名：mock 后端据此产出与专家范畴相符的风险标签（Stage 14）。
+            agent = build_expert_agent(spec, default_chat_model(settings, expert=spec.name))
             cache[spec.name] = agent
         return agent
 
@@ -301,6 +300,70 @@ async def _run_pipeline(
     emit_started: bool = True,
     resume: Any = None,
     registry: Any = None,
+    traceparent: str | None = None,
+    session: str = "",
+    mode: str = FULL_MODE,
+) -> bool:
+    """一次运行/恢复的外层：开根 span（父 = Java 的 traceparent）后交给 _execute_run。
+
+    为什么把 span 开在编排层而不是节点里：节点只声明自己是谁，跨服务父子关系属于
+    「这次运行」的属性。根 span 覆盖整轮图执行，token 总量在收尾时回填，
+    Langfuse 的 trace 汇总（成本/tokens）就读根 span，不需要前端另算。
+    """
+    span_attrs: dict[str, Any] = {
+        "clauseguard.run.id": run_id,
+        "clauseguard.review.mode": mode,
+        "clauseguard.trace.id": trace_id,
+    }
+    if session:
+        span_attrs["langfuse.session.id"] = session
+    if resume is not None:
+        # 恢复是同一笔业务的第二段：单独一个根 span，但打上标记便于在链路上区分
+        # 「首次运行」与「审批后续跑」，不必靠时间戳猜。
+        span_attrs["clauseguard.resumed"] = True
+    with run_span(traceparent, span_attrs) as span:
+
+        def report(result: ReviewState) -> None:
+            budget = result.get("budget")
+            if isinstance(budget, Budget):
+                record_usage(
+                    span,
+                    input_tokens=budget.spent_input_tokens,
+                    output_tokens=budget.spent_output_tokens,
+                    cost_cny=budget.spent_cost_cny,
+                )
+            span.set_attribute(
+                "clauseguard.findings.count",
+                len(active_findings(list(result.get("findings") or []))),
+            )
+            span.set_attribute("clauseguard.degraded", bool(result.get("degraded")))
+
+        return await _execute_run(
+            emitter,
+            graph,
+            initial_state,
+            config,
+            run_id,
+            trace_id,
+            emit_started=emit_started,
+            resume=resume,
+            registry=registry,
+            report=report,
+        )
+
+
+async def _execute_run(
+    emitter: EventEmitter,
+    graph: Any,
+    initial_state: ReviewState | None,
+    config: RunnableConfig,
+    run_id: str,
+    trace_id: str,
+    *,
+    emit_started: bool = True,
+    resume: Any = None,
+    registry: Any = None,
+    report: Any = None,
 ) -> bool:
     """编排一次运行或一次恢复：执行图 → 下发 run.completed（完成）或暂停（中断）。
 
@@ -343,6 +406,10 @@ async def _run_pipeline(
             await _persist_event_seq(registry, run_id, emitter)
             return False
         # 完成：用量/发现数/降级标记/质量指标全部来自图终态。
+        if report is not None:
+            # 回填根 span 的整轮用量；挂起（interrupt）不回调——那轮还没跑完，
+            # 把半程用量写进根 span 会让 Langfuse 的成本统计偏小且不可解释。
+            report(result)
         budget = result.get("budget")
         findings = active_findings(list(result.get("findings") or []))
         # resume 调用完成的是曾被 human_approval 中断的运行，补发该节点 NODE_FINISHED
@@ -381,6 +448,9 @@ async def _run_pipeline(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Stage 14：追踪初始化放在 lifespan——建 provider/exporter 属于进程级资源，
+    # 不应在读事件时才懒初始化（首个请求会丢 span）。关闭时（默认）什么都不做。
+    setup_tracing()
     # Stage 9：连接池与 checkpointer 由 lifespan 创建/关闭；pg_dsn 为空则回落 MemorySaver。
     # 仅当 create_app 未注入 checkpointer（生产/无注入）且配置了 pg_dsn 时才升级为 Postgres；
     # 注入场景（测试模拟「重启后持久化层仍在」）或空 pg_dsn 沿用 create_app 已设的内存默认值。
@@ -400,6 +470,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         pool = getattr(app.state, "db_pool", None)
         if pool is not None:
             await pool.shutdown()
+        # 冲刷最后一批 span，否则进程退出时 BatchSpanProcessor 里的会丢。
+        shutdown_tracing()
 
 
 def create_app(
@@ -537,6 +609,8 @@ def create_app(
                 "content_hash": initial_state["content_hash"],
                 "trace_id": trace_id,
                 "event_seq": 0,
+                # 恢复时用同一 session 归组（trace 里「同一合同同一版本的两次调用」）。
+                "session": f"{contract_id}:v{version}",
             },
         )
 
@@ -545,6 +619,11 @@ def create_app(
                 _run_pipeline(
                     emitter, graph, initial_state, config, run_id, trace_id,
                     registry=app.state.registry,
+                    # Stage 14：Java 的 traceparent 作为父上下文，Python 所有节点 span
+                    # 落在同一条 trace 下；session 用「合同:版本」便于按合同回看。
+                    traceparent=request.headers.get("traceparent"),
+                    session=f"{contract_id}:v{version}",
+                    mode=mode,
                 )
             )
             async for chunk in stream_graph_events(request, emitter, run_task, run_id):
@@ -591,6 +670,10 @@ def create_app(
                     emitter, graph, None, config, run_id, trace_id,
                     emit_started=False, resume=body,
                     registry=app.state.registry,
+                    # 恢复是同一笔业务操作的续跑：沿用 Java 带来的 traceparent，
+                    # 使「首轮审查 → 审批 → 回写」在链路里仍是同一条 trace。
+                    traceparent=request.headers.get("traceparent"),
+                    session=str(info.get("session") or thread_id),
                 )
             )
             async for chunk in stream_graph_events(request, emitter, run_task, run_id):

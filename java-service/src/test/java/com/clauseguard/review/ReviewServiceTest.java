@@ -14,17 +14,20 @@ import com.clauseguard.contract.ContractRepository;
 import com.clauseguard.contract.domain.Contract;
 import com.clauseguard.events.AgentEvent;
 import com.clauseguard.events.InMemoryEventReplayStore;
+import com.clauseguard.observability.TraceContextSupport;
 import com.clauseguard.review.domain.Approval;
 import com.clauseguard.review.domain.Review;
 import com.clauseguard.review.domain.ReviewEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.micrometer.tracing.Tracer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
@@ -77,15 +80,25 @@ class ReviewServiceTest {
 
     private ReviewService service;
 
+    @SuppressWarnings("unchecked")
+    private static ObjectProvider<Tracer> noTracer() {
+        ObjectProvider<Tracer> provider = org.mockito.Mockito.mock(ObjectProvider.class);
+        // lenient：只有 createReview 路径才真正读 Tracer（其余用例走查询面）。
+        org.mockito.Mockito.lenient().when(provider.getIfAvailable()).thenReturn(null);
+        return provider;
+    }
+
     @BeforeEach
     void setup() {
         PythonAgentClient realAgent = new PythonAgentClient(
                 WebClient.builder(), mapper, registry,
                 "http://localhost:8000", Duration.ofSeconds(30));
         agentClient = spy(realAgent);
+        // 追踪关闭是测试默认态：ObjectProvider 取不到 Tracer -> traceparent 走本地生成。
         service = new ReviewService(
                 reviewRepository, reviewEventRepository, approvalRepository,
-                replayStore, agentClient, registry, mapper, contractRepository);
+                replayStore, agentClient, registry, mapper, contractRepository,
+                new TraceContextSupport(noTracer()));
         // 仅 createReview 路径需要 save；其余测试不触发，故标为 lenient 避免严格模式报错。
         lenient().when(reviewRepository.save(any(Review.class))).thenAnswer(i -> i.getArgument(0));
     }
