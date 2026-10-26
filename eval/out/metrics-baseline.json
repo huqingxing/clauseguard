@@ -1,0 +1,220 @@
+{
+  "contracts": 120,
+  "annotations": 466,
+  "findings": 764,
+  "tp": 466,
+  "fn": 0,
+  "fp": 298,
+  "recall": 1.0,
+  "fp_rate": 0.3901,
+  "per_risk": [
+    {
+      "risk_type": "acceptance_risk",
+      "gold_count": 23,
+      "tp": 23,
+      "fn": 0,
+      "fp": 28,
+      "recall": 1.0,
+      "fp_rate": 0.549
+    },
+    {
+      "risk_type": "applicable_law_risk",
+      "gold_count": 21,
+      "tp": 21,
+      "fn": 0,
+      "fp": 0,
+      "recall": 1.0,
+      "fp_rate": 0.0
+    },
+    {
+      "risk_type": "authorization_risk",
+      "gold_count": 39,
+      "tp": 39,
+      "fn": 0,
+      "fp": 7,
+      "recall": 1.0,
+      "fp_rate": 0.1522
+    },
+    {
+      "risk_type": "breach_risk",
+      "gold_count": 29,
+      "tp": 29,
+      "fn": 0,
+      "fp": 40,
+      "recall": 1.0,
+      "fp_rate": 0.5797
+    },
+    {
+      "risk_type": "credential_risk",
+      "gold_count": 25,
+      "tp": 25,
+      "fn": 0,
+      "fp": 8,
+      "recall": 1.0,
+      "fp_rate": 0.2424
+    },
+    {
+      "risk_type": "cross_border_risk",
+      "gold_count": 30,
+      "tp": 30,
+      "fn": 0,
+      "fp": 10,
+      "recall": 1.0,
+      "fp_rate": 0.25
+    },
+    {
+      "risk_type": "data_processing_risk",
+      "gold_count": 35,
+      "tp": 35,
+      "fn": 0,
+      "fp": 27,
+      "recall": 1.0,
+      "fp_rate": 0.4355
+    },
+    {
+      "risk_type": "delivery_risk",
+      "gold_count": 27,
+      "tp": 27,
+      "fn": 0,
+      "fp": 32,
+      "recall": 1.0,
+      "fp_rate": 0.5424
+    },
+    {
+      "risk_type": "disclaimer_risk",
+      "gold_count": 21,
+      "tp": 21,
+      "fn": 0,
+      "fp": 0,
+      "recall": 1.0,
+      "fp_rate": 0.0
+    },
+    {
+      "risk_type": "export_control_risk",
+      "gold_count": 27,
+      "tp": 27,
+      "fn": 0,
+      "fp": 13,
+      "recall": 1.0,
+      "fp_rate": 0.325
+    },
+    {
+      "risk_type": "force_majeure_risk",
+      "gold_count": 17,
+      "tp": 17,
+      "fn": 0,
+      "fp": 16,
+      "recall": 1.0,
+      "fp_rate": 0.4848
+    },
+    {
+      "risk_type": "invoice_risk",
+      "gold_count": 16,
+      "tp": 16,
+      "fn": 0,
+      "fp": 37,
+      "recall": 1.0,
+      "fp_rate": 0.6981
+    },
+    {
+      "risk_type": "ip_ownership_risk",
+      "gold_count": 19,
+      "tp": 19,
+      "fn": 0,
+      "fp": 0,
+      "recall": 1.0,
+      "fp_rate": 0.0
+    },
+    {
+      "risk_type": "jurisdiction_risk",
+      "gold_count": 27,
+      "tp": 27,
+      "fn": 0,
+      "fp": 11,
+      "recall": 1.0,
+      "fp_rate": 0.2895
+    },
+    {
+      "risk_type": "open_source_risk",
+      "gold_count": 23,
+      "tp": 23,
+      "fn": 0,
+      "fp": 13,
+      "recall": 1.0,
+      "fp_rate": 0.3611
+    },
+    {
+      "risk_type": "payment_risk",
+      "gold_count": 24,
+      "tp": 24,
+      "fn": 0,
+      "fp": 24,
+      "recall": 1.0,
+      "fp_rate": 0.5
+    },
+    {
+      "risk_type": "qualification_risk",
+      "gold_count": 22,
+      "tp": 22,
+      "fn": 0,
+      "fp": 0,
+      "recall": 1.0,
+      "fp_rate": 0.0
+    },
+    {
+      "risk_type": "succession_risk",
+      "gold_count": 23,
+      "tp": 23,
+      "fn": 0,
+      "fp": 19,
+      "recall": 1.0,
+      "fp_rate": 0.4524
+    },
+    {
+      "risk_type": "termination_risk",
+      "gold_count": 18,
+      "tp": 18,
+      "fn": 0,
+      "fp": 13,
+      "recall": 1.0,
+      "fp_rate": 0.4194
+    }
+  ],
+  "citation": {
+    "gold_total": 50,
+    "gold_checked": 50,
+    "gold_correct": 48,
+    "accuracy": 0.96,
+    "manual_sample_ratio": 0.0654
+  },
+  "localization": {
+    "matched": 466,
+    "iou_hits": 466,
+    "accuracy": 1.0,
+    "mean_iou": 1.0,
+    "threshold": 0.8
+  },
+  "latency_ms": {
+    "p50": 3285,
+    "p95": 4910,
+    "mean": 3345,
+    "max": 4935
+  },
+  "tokens": {
+    "input_per_contract": 2438,
+    "output_per_contract": 975,
+    "total": 409500
+  },
+  "cost_cny": {
+    "per_contract": 0.0039,
+    "total": 0.468
+  },
+  "degraded_contracts": 0,
+  "meta": {
+    "label": "baseline",
+    "seed": 20261026,
+    "commit": "f8521f7",
+    "contracts_run": 120,
+    "smoke": false
+  }
+}

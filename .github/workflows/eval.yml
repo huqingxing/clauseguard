@@ -1,0 +1,58 @@
+# Stage 13 评测 CI：push 冒烟（10 份），PR 全量 + 对比报告产物。
+# 评测全部确定性（固定种子 + examiner 替身），无需模型 API key。
+# 走 Makefile 目标（make eval-smoke / make eval），保证验收命令本身被真实执行。
+name: eval
+
+on:
+  push:
+    paths:
+      - "eval/**"
+      - "python-agent/app/**"
+      - "python-agent/pyproject.toml"
+      - "Makefile"
+      - ".github/workflows/eval.yml"
+  pull_request:
+    paths:
+      - "eval/**"
+      - "python-agent/app/**"
+      - "python-agent/pyproject.toml"
+      - "Makefile"
+      - ".github/workflows/eval.yml"
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      # uv 在 python-agent/.venv 建环境，正好是 Makefile 在 Linux 下探测的路径。
+      - name: Sync python-agent deps
+        run: uv sync --project python-agent -q
+
+      - name: Ensure dataset (fixed seed)
+        run: |
+          PYTHONPATH=python-agent:. uv run --project python-agent \
+            python -m eval.dataset.generate
+
+      - name: Smoke eval (push, 10 contracts)
+        if: github.event_name == 'push'
+        run: make eval-smoke
+
+      - name: Full eval with baseline diff (PR)
+        if: github.event_name == 'pull_request'
+        run: make eval LABEL=ci-pr
+
+      - name: Upload eval report (PR)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: |
+            eval/out/report.md
+            eval/out/metrics-ci-pr.json
+          if-no-files-found: error
