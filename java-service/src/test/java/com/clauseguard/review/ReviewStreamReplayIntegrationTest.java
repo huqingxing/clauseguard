@@ -1,6 +1,7 @@
 package com.clauseguard.review;
 
 import com.clauseguard.agent.PythonAgentClient;
+import com.clauseguard.contract.ContractRepository;
 import com.clauseguard.events.InMemoryEventReplayStore;
 import com.clauseguard.review.domain.Review;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -47,6 +48,8 @@ class ReviewStreamReplayIntegrationTest {
     private PythonAgentClient agentClient;
     @MockBean
     private ApprovalRepository approvalRepository;
+    @MockBean
+    private ContractRepository contractRepository;
 
     @Test
     void reconnectWithLastEventIdReplaysMissingEvents() throws Exception {
@@ -106,10 +109,11 @@ class ReviewStreamReplayIntegrationTest {
                 InMemoryEventReplayStore replayStore,
                 PythonAgentClient agentClient,
                 CircuitBreakerRegistry circuitBreakerRegistry,
-                com.fasterxml.jackson.databind.ObjectMapper mapper) {
+                com.fasterxml.jackson.databind.ObjectMapper mapper,
+                com.clauseguard.contract.ContractRepository contractRepository) {
             return new ReviewService(
                     reviewRepository, reviewEventRepository, approvalRepository,
-                    replayStore, agentClient, circuitBreakerRegistry, mapper);
+                    replayStore, agentClient, circuitBreakerRegistry, mapper, contractRepository);
         }
     }
 }

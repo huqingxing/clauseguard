@@ -27,6 +27,7 @@ MODEL_BY_DEF: dict[str, Any] = {
     "Interrupt": models.Interrupt,
     "RunCompleted": models.RunCompleted,
     "RunFailed": models.RunFailed,
+    "Finding": models.Finding,
 }
 
 DEF_NAMES = list(SCHEMA["$defs"].keys())
@@ -40,9 +41,10 @@ def test_schema_defs_have_examples(name: str) -> None:
 
 @pytest.mark.parametrize("name", DEF_NAMES)
 def test_examples_pass_jsonschema(name: str) -> None:
-    definition = SCHEMA["$defs"][name]
-    validator = Draft202012Validator(definition)
-    for example in definition.get("examples", []):
+    # 单个 def 可能 $ref 同文件的其它 def（如 RunCompleted.findings -> Finding），
+    # 隔离校验会丢 $defs 作用域；包一层引用根，让 #/$defs/* 可解析。
+    validator = Draft202012Validator({"$ref": f"#/$defs/{name}", "$defs": SCHEMA["$defs"]})
+    for example in SCHEMA["$defs"][name].get("examples", []):
         # 严格 2020-12 校验，examples 必须完全符合该事件 schema（含 additionalProperties=false）。
         validator.validate(example)
 

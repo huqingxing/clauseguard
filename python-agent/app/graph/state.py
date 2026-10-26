@@ -9,7 +9,7 @@ reducer 全部为纯函数（禁止 IO），这是并行拓扑下状态一致性
 
 import hashlib
 import time
-from typing import Annotated, Final, NotRequired, TypedDict
+from typing import Annotated, Any, Final, NotRequired, TypedDict
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -379,3 +379,7 @@ class ReviewState(TypedDict):
     # 为什么需要它：缓存必须记下「这条没发现问题」这个结论——只缓存有 finding 的条款，
     # 正常条款每次增量都要重审，省钱幅度会被打掉一半以上。
     reviewed_pairs: NotRequired[Annotated[list[str], merge_reviewed]]
+    # ---- Stage 12 合同源（Java 上传时随运行请求透传）----
+    # 描述「文件在哪、怎么取」：download_url 指向 Java 的内容端点（Python 经 REST 拉文件，
+    # 铁律 1）。ingest 据此下载解析；缺失即显式降级（node.failed + 空条款）。
+    source: NotRequired[dict[str, Any]]

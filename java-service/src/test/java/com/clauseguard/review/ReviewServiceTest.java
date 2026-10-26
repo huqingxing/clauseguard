@@ -3,12 +3,20 @@ package com.clauseguard.review;
 import com.clauseguard.agent.PythonAgentClient;
 import com.clauseguard.api.model.ApproveRequest;
 import com.clauseguard.api.model.ApproveResponse;
+import com.clauseguard.api.model.ContractDiff;
+import com.clauseguard.api.model.Finding;
+import com.clauseguard.api.model.FindingsPage;
 import com.clauseguard.api.model.ReviewCreateRequest;
 import com.clauseguard.api.model.ReviewCreateResponse;
+import com.clauseguard.api.model.ReviewResult;
+import com.clauseguard.contract.ContractNotFoundException;
+import com.clauseguard.contract.ContractRepository;
+import com.clauseguard.contract.domain.Contract;
 import com.clauseguard.events.AgentEvent;
 import com.clauseguard.events.InMemoryEventReplayStore;
 import com.clauseguard.review.domain.Approval;
 import com.clauseguard.review.domain.Review;
+import com.clauseguard.review.domain.ReviewEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,7 +29,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -56,6 +66,8 @@ class ReviewServiceTest {
     private ReviewEventRepository reviewEventRepository;
     @Mock
     private ApprovalRepository approvalRepository;
+    @Mock
+    private ContractRepository contractRepository;
 
     private PythonAgentClient agentClient;
 
@@ -73,7 +85,7 @@ class ReviewServiceTest {
         agentClient = spy(realAgent);
         service = new ReviewService(
                 reviewRepository, reviewEventRepository, approvalRepository,
-                replayStore, agentClient, registry, mapper);
+                replayStore, agentClient, registry, mapper, contractRepository);
         // 仅 createReview 路径需要 save；其余测试不触发，故标为 lenient 避免严格模式报错。
         lenient().when(reviewRepository.save(any(Review.class))).thenAnswer(i -> i.getArgument(0));
     }
@@ -84,7 +96,8 @@ class ReviewServiceTest {
                 "{\"seq\":1,\"type\":\"node.started\"}");
         AgentEvent e2 = new AgentEvent(2, "2026-10-23T10:00:01+00:00", "run.completed",
                 "{\"seq\":2,\"type\":\"run.completed\"}");
-        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt()))
+        givenContract("00000000-0000-0000-0000-0000000000a1", 1);
+        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt(), any()))
                 .thenReturn(Flux.just(e1, e2));
 
         ReviewCreateRequest request = new ReviewCreateRequest()
@@ -104,7 +117,8 @@ class ReviewServiceTest {
     void incrementalCreateForwardsVersionModeAndBaseVersionToAgent() {
         // Stage 11：前端「仅重审变更」= mode=incremental + 真实版本号；Java 不解释语义，
         // 但必须把版本事实原样透传给编排层（落库版本与透传版本也必须一致）。
-        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt()))
+        givenContract("00000000-0000-0000-0000-0000000000b1", 3);
+        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt(), any()))
                 .thenReturn(Flux.empty());
 
         ReviewCreateRequest request = new ReviewCreateRequest()
@@ -114,23 +128,24 @@ class ReviewServiceTest {
                 .baseVersion(2);
         service.createReview(request, null);
 
-        verify(agentClient).streamRun(anyString(), anyString(), anyString(), eq(3), eq("incremental"), eq(2));
+        verify(agentClient).streamRun(anyString(), anyString(), anyString(), eq(3), eq("incremental"), eq(2), any());
         ArgumentCaptor<Review> saved = ArgumentCaptor.forClass(Review.class);
         verify(reviewRepository).save(saved.capture());
         assertThat(saved.getValue().getVersion()).isEqualTo(3);
     }
 
     @Test
-    void fullCreateDefaultsToModeFullAndVersionOne() {
-        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt()))
+    void fullCreateDefaultsToContractCurrentVersion() {
+        givenContract("00000000-0000-0000-0000-0000000000b2", 1);
+        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt(), any()))
                 .thenReturn(Flux.empty());
 
         ReviewCreateRequest request = new ReviewCreateRequest()
                 .contractId(UUID.fromString("00000000-0000-0000-0000-0000000000b2"));
         service.createReview(request, null);
 
-        // 未指定版本时沿用既有语义（v1 + full），不改变既有调用方行为。
-        verify(agentClient).streamRun(anyString(), anyString(), anyString(), eq(0), eq("full"), eq(0));
+        // Stage 12：未指定版本时取合同当前版本（上传后直接审查的默认路径）。
+        verify(agentClient).streamRun(anyString(), anyString(), anyString(), eq(1), eq("full"), eq(0), any());
         ArgumentCaptor<Review> saved = ArgumentCaptor.forClass(Review.class);
         verify(reviewRepository).save(saved.capture());
         assertThat(saved.getValue().getVersion()).isEqualTo(1);
@@ -138,9 +153,9 @@ class ReviewServiceTest {
 
     @Test
     void agentUnavailableEmitsRunFailedWithRetryable() throws Exception {
-        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt()))
+        givenContract("00000000-0000-0000-0000-0000000000a2", 1);
+        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt(), any()))
                 .thenReturn(Flux.error(new RuntimeException("boom")));
-
         ReviewCreateRequest request = new ReviewCreateRequest()
                 .contractId(UUID.fromString("00000000-0000-0000-0000-0000000000a2"));
         ReviewCreateResponse response = service.createReview(request, null);
@@ -274,6 +289,181 @@ class ReviewServiceTest {
         assertThat(a2.getAfterWording()).isEqualTo("修订后条款二");
         // 转发 Python resume（审批结果数组即 interrupt 返回值）。
         verify(agentClient).streamResume(eq("run-abc"), any(), anyString());
+    }
+
+    // ---- Stage 12：合同必须存在（404 而非空跑）；source 透传；查询面整形 ----
+
+    private void givenContract(String id, int version) {
+        Contract contract = new Contract();
+        contract.setId(id);
+        contract.setVersion(version);
+        contract.setFilename("测试合同.pdf");
+        contract.setContentType("application/pdf");
+        contract.setSizeBytes(2048);
+        contract.setStorageKey(id + "-v" + version + ".pdf");
+        contract.setCreatedAt(Instant.parse("2026-10-25T10:00:00Z"));
+        lenient().when(contractRepository.findFirstByIdOrderByVersionDesc(id))
+                .thenReturn(Optional.of(contract));
+    }
+
+    @Test
+    void createReviewRejectsUnknownContract() {
+        when(contractRepository.findFirstByIdOrderByVersionDesc(anyString()))
+                .thenReturn(Optional.empty());
+
+        ReviewCreateRequest request = new ReviewCreateRequest()
+                .contractId(UUID.fromString("00000000-0000-0000-0000-0000000000ff"));
+        assertThatThrownBy(() -> service.createReview(request, null))
+                .isInstanceOf(ContractNotFoundException.class);
+        // 不落库、不触发 Python：没有合同的审查是空跑。
+        verify(reviewRepository, never()).save(any(Review.class));
+    }
+
+    @Test
+    void createReviewForwardsContractSourceToAgent() {
+        givenContract("00000000-0000-0000-0000-0000000000a3", 1);
+        when(agentClient.streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt(), any()))
+                .thenReturn(Flux.empty());
+
+        service.createReview(new ReviewCreateRequest()
+                .contractId(UUID.fromString("00000000-0000-0000-0000-0000000000a3")), null);
+
+        // source 描述「文件在哪」：download_url 必须指向 Java 自己的内容端点
+        //（Python 经 REST 拉文件，铁律 1），而不是对象存储内部地址。
+        ArgumentCaptor<Map<String, Object>> sourceCap = ArgumentCaptor.forClass(Map.class);
+        verify(agentClient).streamRun(anyString(), anyString(), anyString(), anyInt(), anyString(), anyInt(),
+                sourceCap.capture());
+        Map<String, Object> source = sourceCap.getValue();
+        assertThat(source.get("download_url"))
+                .isEqualTo("/api/v1/contracts/00000000-0000-0000-0000-0000000000a3/content");
+        assertThat(source.get("content_type")).isEqualTo("application/pdf");
+        assertThat(source.get("version")).isEqualTo(1);
+    }
+
+    @Test
+    void getReviewResultMapsFindingsFromRunCompleted() {
+        givenReviewWithCompleted("00000000-0000-0000-0000-0000000000c1", 2);
+        ReviewResult result = service.getReviewResult("00000000-0000-0000-0000-0000000000c1");
+
+        assertThat(result.getVersion()).isEqualTo(2);
+        assertThat(result.getFindings()).hasSize(2);
+        Finding first = result.getFindings().get(0);
+        assertThat(first.getClauseId()).isEqualTo("doc#0007");
+        assertThat(first.getRiskLevel()).isEqualTo(Finding.RiskLevelEnum.HIGH);
+        assertThat(first.getAgent()).isEqualTo("commercial-v1");
+        assertThat(first.getCitations()).hasSize(1);
+        assertThat(first.getCitations().get(0).getSourceId()).isEqualTo("LAW-001");
+    }
+
+    @Test
+    void getReviewResultWithoutCompletedEventHasEmptyFindings() {
+        Review review = new Review();
+        review.setId("00000000-0000-0000-0000-0000000000c2");
+        review.setContractId("00000000-0000-0000-0000-0000000000a1");
+        review.setVersion(1);
+        review.setStatus(ReviewStatus.RUNNING);
+        review.setCreatedAt(Instant.parse("2026-10-25T10:00:00Z"));
+        when(reviewRepository.findById("00000000-0000-0000-0000-0000000000c2")).thenReturn(Optional.of(review));
+        when(reviewEventRepository.findByReviewIdAndTypeOrderBySeqAsc("00000000-0000-0000-0000-0000000000c2", "run.completed"))
+                .thenReturn(List.of());
+
+        ReviewResult result = service.getReviewResult("00000000-0000-0000-0000-0000000000c2");
+        assertThat(result.getFindings()).isEmpty();
+        assertThat(result.getStatus()).isEqualTo(ReviewResult.StatusEnum.RUNNING);
+    }
+
+    @Test
+    void findingsPageSlicesCompletedFindings() {
+        givenReviewWithCompleted("00000000-0000-0000-0000-0000000000c3", 1);
+        FindingsPage page = service.findingsPage("00000000-0000-0000-0000-0000000000c3", 1, 1);
+        assertThat(page.getTotal()).isEqualTo(2);
+        assertThat(page.getItems()).hasSize(1);
+        assertThat(page.getItems().get(0).getClauseId()).isEqualTo("doc#0011");
+        assertThat(page.getPage()).isEqualTo(1);
+    }
+
+    @Test
+    void artifactDownloadUrlReadsRunCompletedArtifact() {
+        givenReviewWithCompleted("00000000-0000-0000-0000-0000000000c4", 1);
+        assertThat(service.artifactDownloadUrl("00000000-0000-0000-0000-0000000000c4"))
+                .contains("http://minio.local/clauseguard/artifacts/annotated.docx?sig=abc");
+    }
+
+    @Test
+    void artifactDownloadUrlEmptyWhenNotRendered() {
+        when(reviewEventRepository.findByReviewIdAndTypeOrderBySeqAsc("00000000-0000-0000-0000-0000000000c5", "run.completed"))
+                .thenReturn(List.of());
+        assertThat(service.artifactDownloadUrl("00000000-0000-0000-0000-0000000000c5")).isEmpty();
+    }
+
+    @Test
+    void contractDiffPassesThroughIncrementalLedger() {
+        Review review = new Review();
+        review.setId("00000000-0000-0000-0000-0000000000c6");
+        review.setContractId("00000000-0000-0000-0000-0000000000a1");
+        review.setVersion(2);
+        when(reviewRepository.findFirstByContractIdOrderByCreatedAtDesc("00000000-0000-0000-0000-0000000000a1"))
+                .thenReturn(Optional.of(review));
+        when(reviewEventRepository.findByReviewIdAndTypeOrderBySeqAsc("00000000-0000-0000-0000-0000000000c6", "run.completed"))
+                .thenReturn(List.of(completedEvent("r-diff",
+                        "{\"seq\":20,\"type\":\"run.completed\",\"usage\":{\"input_tokens\":10,"
+                        + "\"output_tokens\":2,\"cost_cny\":0.1},\"findings_count\":2,\"degraded\":false,"
+                        + "\"quality\":{\"verified_rate\":1.0,\"rework_count\":0,\"unverified_count\":0},"
+                        + "\"incremental\":{\"mode\":\"incremental\",\"baseline_version\":1,"
+                        + "\"changed_count\":2,\"added_count\":1,\"removed_count\":1,"
+                        + "\"unchanged_count\":36,\"reused_findings\":15,\"stale_findings\":1,"
+                        + "\"cache_hits\":38,\"cache_misses\":2,\"cache_hit_rate\":0.95,"
+                        + "\"changed_clause_ids\":[\"doc#0004\",\"doc#0011\"],"
+                        + "\"added_clause_ids\":[\"doc#0039\"],\"removed_clause_ids\":[\"doc#0021\"]}}")));
+
+        ContractDiff diff = service.contractDiff("00000000-0000-0000-0000-0000000000a1", null);
+        assertThat(diff.getBaselineVersion()).isEqualTo(1);
+        assertThat(diff.getTargetVersion()).isEqualTo(2);
+        assertThat(diff.getChanged()).containsExactly("doc#0004", "doc#0011");
+        assertThat(diff.getAdded()).containsExactly("doc#0039");
+        assertThat(diff.getRemoved()).containsExactly("doc#0021");
+        assertThat(diff.getStaleFindings()).isEqualTo(1);
+    }
+
+    private void givenReviewWithCompleted(String reviewId, int version) {
+        Review review = new Review();
+        review.setId(reviewId);
+        review.setContractId("00000000-0000-0000-0000-0000000000a1");
+        review.setVersion(version);
+        review.setStatus(ReviewStatus.COMPLETED);
+        review.setRunId("run-xyz");
+        review.setCreatedAt(Instant.parse("2026-10-25T10:00:00Z"));
+        lenient().when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
+        lenient().when(reviewEventRepository.findByReviewIdAndTypeOrderBySeqAsc(reviewId, "run.completed"))
+                .thenReturn(List.of(completedEvent(reviewId,
+                        "{\"seq\":30,\"type\":\"run.completed\","
+                        + "\"usage\":{\"input_tokens\":16800,\"output_tokens\":840,\"cost_cny\":0.35},"
+                        + "\"findings_count\":2,\"degraded\":false,"
+                        + "\"quality\":{\"verified_rate\":1.0,\"rework_count\":0,\"unverified_count\":0},"
+                        + "\"findings\":["
+                        + "{\"clause_id\":\"doc#0007\",\"agent\":\"commercial-v1\","
+                        + "\"risk_type\":\"付款条件缺失\",\"risk_level\":\"high\","
+                        + "\"summary\":\"未约定逾期付款违约金\",\"suggestion\":\"增加违约金条款\","
+                        + "\"evidence\":\"买方应在验收合格后支付货款\",\"stale\":false,"
+                        + "\"citations\":[{\"source_id\":\"LAW-001\",\"title\":\"《民法典》第五百八十六条\","
+                        + "\"excerpt\":\"当事人可以约定一方向对方给付定金\",\"url\":null}]},"
+                        + "{\"clause_id\":\"doc#0011\",\"agent\":\"liability-v1\","
+                        + "\"risk_type\":\"责任上限缺失\",\"risk_level\":\"medium\","
+                        + "\"summary\":\"未约定赔偿责任上限\",\"suggestion\":\"\","
+                        + "\"evidence\":\"\",\"stale\":false,\"citations\":[]}],"
+                        + "\"artifact\":{\"object_key\":\"artifacts/x/annotated.docx\","
+                        + "\"download_url\":\"http://minio.local/clauseguard/artifacts/annotated.docx?sig=abc\","
+                        + "\"comments_count\":2,\"size_bytes\":48213}}")));
+    }
+
+    private static ReviewEvent completedEvent(String reviewId, String payload) {
+        ReviewEvent event = new ReviewEvent();
+        event.setReviewId(reviewId);
+        event.setSeq(30);
+        event.setType("run.completed");
+        event.setPayload(payload);
+        event.setTs(Instant.parse("2026-10-25T10:05:00Z"));
+        return event;
     }
 
     private void await(BooleanSupplier condition) throws InterruptedException {

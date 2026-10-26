@@ -7,6 +7,8 @@ Stage 7 起拓扑为 ingest -> dispatch -> (Send fan-out)，空合同（无条�
 不分发任何分片直接收尾。Stage 11 起 ingest 之后插入 diff 节点（算版本 diff 与缓存复用），
 故事件序列为 run.started → ingest 起止 → diff 起止（含一条 message.delta 摘要）→
 dispatch 起止 → run.completed（真实 usage/findings_count/degraded 来自图终态）。
+Stage 12 起 ingest 真实化：无 source 且 state 无条款时降级——发 node.failed（不凑
+node.finished 假完成对）+ run.completed.degraded=true，下游 diff/dispatch 按空条款收尾。
 """
 
 import asyncio
@@ -26,11 +28,13 @@ SCHEMA_PATH = Path(__file__).resolve().parents[2] / "contracts" / "events.schema
 VALIDATOR = Draft202012Validator(json.loads(SCHEMA_PATH.read_text(encoding="utf-8")))
 
 # 期望事件顺序（与任务验收一致）。
+# 本用例不传 source：Stage 12 ingest 真实化后走降级路径，ingest 发 node.failed
+# 而非 node.finished——无合同源时明确失败，不凑「起止成对」的假完成。
 EXPECTED_ORDER: list[EventType] = [
     EventType.RUN_STARTED,
-    # ingest 起止
+    # ingest 降级失败（无 source）
     EventType.NODE_STARTED,
-    EventType.NODE_FINISHED,
+    EventType.NODE_FAILED,
     # diff 起止（Stage 11：中间一条增量摘要 message.delta）
     EventType.NODE_STARTED,
     EventType.MESSAGE_DELTA,
@@ -60,6 +64,13 @@ async def _sse_check() -> None:
 
     types = [EventType(e["type"]) for e in events]
     assert types == EXPECTED_ORDER, f"事件顺序不符: {types}"
+
+    # Stage 12：无 source 降级必须在终态显式标注，不得假装成功（红线）。
+    completed = events[-1]
+    assert completed["type"] == "run.completed"
+    degraded = completed.get("degraded")
+    assert degraded is True, "ingest 无 source 降级时 run.completed.degraded 必须为 true"
+    assert completed.get("findings") == [], "降级路径不得产出 findings 明细"
 
     seqs = [int(e["seq"]) for e in events]
     assert seqs == list(range(1, len(seqs) + 1)), f"seq 必须严格从 1 递增、无跳号: {seqs}"

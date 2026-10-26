@@ -11,6 +11,12 @@ servers:
 tags:
   - name: review
     description: 审查任务生命周期（创建、查询、审批）
+  - name: contract
+    description: 合同上传与版本内容（Stage 12：上传 -> 审查 -> 原文/对比的素材入口）
+  - name: eval
+    description: 评测看板（聚合 review_event，无独立表）
+  - name: admin
+    description: 运维管理（双栈健康聚合）
 paths:
   /api/v1/reviews:
     post:
@@ -150,6 +156,185 @@ paths:
                 $ref: "#/components/schemas/FindingsPage"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/reviews/{id}/artifact:
+    get:
+      tags: [review]
+      summary: 获取批注回写产物（带批注的 Word）
+      operationId: getReviewArtifact
+      description: >-
+        Stage 12：前端只认 Java——本端点从 run.completed 事件的 artifact 字段解析预签名
+        URL 并 302 跳转，浏览器不直连 MinIO。未回写（占位/未完成）时返回 404。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "302":
+          description: 重定向到带签名的下载 URL（限时有效）。
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/contracts:
+    post:
+      tags: [contract]
+      summary: 上传合同（PDF/DOCX）
+      operationId: uploadContract
+      description: >-
+        Stage 12：multipart 上传，落 Java 侧存储后返回 contract_id 与版本号；
+        前端随后以该 contract_id 调 createReview 发起审查。上传即版本 1，
+        覆盖上传产生新版本（版本号 +1）。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 合同文件，仅接受 .pdf/.docx。
+      responses:
+        "201":
+          description: 上传成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractUploadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    get:
+      tags: [contract]
+      summary: 合同列表（含最近一次审查状态）
+      operationId: listContracts
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema: { type: string }
+          description: 按文件名模糊过滤。
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: 合同摘要列表。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ContractSummary"
+  /api/v1/contracts/{id}:
+    get:
+      tags: [contract]
+      summary: 合同详情（当前版本 + 最近审查）
+      operationId: getContract
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: 合同详情。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/contracts/{id}/content:
+    get:
+      tags: [contract]
+      summary: 下载合同原文（当前版本二进制）
+      operationId: getContractContent
+      description: >-
+        Stage 12：工作台左栏原文渲染的数据源（pdf.js / docx-preview 直接消费本流），
+        Python ingest 也经 Java 暴露的下载通道取文件（铁律 1：不直连业务库/存储）。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: version
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1 }
+          description: 省略时返回当前版本。
+      responses:
+        "200":
+          description: 合同二进制（Content-Type 按文件类型）。
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema: { type: string, format: binary }
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/contracts/{id}/diff:
+    get:
+      tags: [contract]
+      summary: 版本间条款变更对比（changed/added/removed）
+      operationId: getContractDiff
+      description: >-
+        Stage 12：数据来自该合同最近一次 run.completed 的 incremental 账本
+        （Python diff 的单一事实源），本端点只做透传整形，不重新计算。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: target
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1 }
+          description: 目标版本；省略时取最近一次审查的版本。
+      responses:
+        "200":
+          description: 变更对比结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractDiff"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/eval/summary:
+    get:
+      tags: [eval]
+      summary: 评测看板汇总（token/成本/质量/增量收益）
+      operationId: getEvalSummary
+      description: >-
+        Stage 12：聚合 review_event 中 run.completed 的 usage/quality/incremental 字段，
+        不建新表（数据本来就在事件流里）。
+      responses:
+        "200":
+          description: 汇总指标。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvalSummary"
+  /api/v1/admin/health:
+    get:
+      tags: [admin]
+      summary: 双栈健康聚合（Java + Python）
+      operationId: getAdminHealth
+      description: >-
+        Stage 12：前端不直连 Python——由 Java 代理探测 Python /healthz 后聚合返回，
+        一屏看全双栈与依赖（MySQL/Redis/Postgres/MinIO）状态。
+      responses:
+        "200":
+          description: 聚合健康状态（任一依赖 down 也返回 200，由 details 表达）。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminHealth"
 components:
   responses:
     BadRequest:
@@ -249,6 +434,13 @@ components:
         contract_id:
           type: string
           format: uuid
+        version:
+          type: integer
+          minimum: 1
+          description: 本次审查对应的合同版本（Stage 11 起落库）。
+        run_id:
+          type: [string, "null"]
+          description: Python 运行 ID（run.started 捕获），断点恢复定位用。
         status:
           type: string
           enum: [queued, running, awaiting_approval, completed, failed]
@@ -260,43 +452,59 @@ components:
           format: date-time
         findings:
           type: array
+          description: >-
+            审查发现明细，来自 run.completed 的 findings 字段（与 events.schema.json
+            的 Finding 同构，已剔除 stale）。运行未完成时为空数组。
           items:
             $ref: "#/components/schemas/Finding"
     Finding:
       type: object
-      required: [finding_id, clause_id, risk_level, category, summary, created_at]
+      description: >-
+        审查发现。Stage 12：与 contracts/events.schema.json 的 $defs/Finding 严格同构
+        （run.completed.findings 是唯一事实源），此前声明的 finding_id/category/quote/
+        references 形状从未实现，本次对齐纠偏。
+      required: [clause_id, agent, risk_type, risk_level, summary]
       properties:
-        finding_id:
-          type: string
-          format: uuid
         clause_id:
           type: string
+          description: 关联条款 ID，点击定位与批注锚点共用。
+        agent:
+          type: string
+          description: 产出该发现的专家 Agent 名（如 commercial-v1）。
+        risk_type:
+          type: string
+          description: 风险类别标签，前端筛选维度。
         risk_level:
           type: string
-          enum: [low, medium, high]
-        category:
-          type: string
-          description: 风险类别，如 违约责任 / 保密义务。
+          enum: [low, medium, high, unverified]
+          description: 风险等级；unverified 为引用校验降级值。
         summary:
           type: string
-          description: 风险摘要。
-        quote:
-          type: string
-          description: 命中原文片段。
+          description: 发现摘要，面向业务人员的结论。
         suggestion:
           type: string
           description: 修改建议。
-        references:
+        evidence:
+          type: string
+          description: 条款原文逐字片段，定位风险位置用。
+        stale:
+          type: boolean
+          description: Stage 11：条款已删除的历史结论标记（明细中恒为 false）。
+        citations:
           type: array
+          description: 白名单引用；来源只能是检索结果，前端可展开核对。
           items:
-            type: string
-          description: 引用白名单条目，模型不得生成 schema 外法条编号。
-        agent:
-          type: string
-          description: 产出该发现的专家 Agent。
-        created_at:
-          type: string
-          format: date-time
+            type: object
+            required: [source_id, title, excerpt]
+            properties:
+              source_id:
+                type: string
+              title:
+                type: string
+              excerpt:
+                type: string
+              url:
+                type: [string, "null"]
     FindingsPage:
       type: object
       required: [items, page, size, total]
@@ -314,6 +522,181 @@ components:
         total:
           type: integer
           minimum: 0
+    ContractUploadResponse:
+      type: object
+      required: [contract_id, version, filename, content_type, size_bytes]
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 1
+          description: 本次上传产生的版本号（首次上传为 1，覆盖上传 +1）。
+        filename:
+          type: string
+        content_type:
+          type: string
+        size_bytes:
+          type: integer
+          minimum: 0
+    ContractSummary:
+      type: object
+      required: [contract_id, filename, version, created_at]
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        last_review:
+          type: [object, "null"]
+          description: 最近一次审查摘要；无审查时为 null。
+          properties:
+            review_id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [queued, running, awaiting_approval, completed, failed]
+            mode:
+              type: string
+              enum: [full, incremental]
+            findings_count:
+              type: integer
+              minimum: 0
+    ContractDetail:
+      type: object
+      required: [contract_id, filename, version, content_type, size_bytes, created_at]
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        content_type:
+          type: string
+        size_bytes:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        content_url:
+          type: string
+          description: 原文下载地址（Java 端点，形如 /api/v1/contracts/{id}/content）。
+        last_review:
+          type: [object, "null"]
+          properties:
+            review_id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [queued, running, awaiting_approval, completed, failed]
+            mode:
+              type: string
+              enum: [full, incremental]
+    ContractDiff:
+      type: object
+      required: [contract_id, baseline_version, target_version, changed, added, removed]
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+        baseline_version:
+          type: integer
+          minimum: 0
+        target_version:
+          type: integer
+          minimum: 1
+        changed:
+          type: array
+          description: 编号相同但内容变化的条款 ID。
+          items: { type: string }
+        added:
+          type: array
+          items: { type: string }
+        removed:
+          type: array
+          items: { type: string }
+        stale_findings:
+          type: integer
+          minimum: 0
+          description: 因条款删除被标 stale 的历史 findings 条数（保留追溯）。
+    EvalSummary:
+      type: object
+      required: [total_reviews, completed_reviews, failed_reviews, totals, averages]
+      properties:
+        total_reviews:
+          type: integer
+          minimum: 0
+        completed_reviews:
+          type: integer
+          minimum: 0
+        failed_reviews:
+          type: integer
+          minimum: 0
+        totals:
+          type: object
+          required: [input_tokens, output_tokens, cost_cny, findings]
+          properties:
+            input_tokens: { type: integer, minimum: 0 }
+            output_tokens: { type: integer, minimum: 0 }
+            cost_cny: { type: number, minimum: 0 }
+            findings: { type: integer, minimum: 0 }
+        averages:
+          type: object
+          required: [verified_rate, rework_count, duration_ms]
+          properties:
+            verified_rate:
+              type: number
+              minimum: 0
+              maximum: 1
+              description: 各 completed 运行 verified_rate 的均值。
+            rework_count: { type: number, minimum: 0 }
+            duration_ms:
+              type: number
+              minimum: 0
+              description: node.finished 的 duration_ms 总和均值（每次审查一次 run.completed）。
+        incremental:
+          type: object
+          description: 增量重审收益（仅统计 mode=incremental 的运行）。
+          required: [runs, full_equivalent_tokens, incremental_tokens, saved_ratio]
+          properties:
+            runs: { type: integer, minimum: 0 }
+            full_equivalent_tokens: { type: integer, minimum: 0 }
+            incremental_tokens: { type: integer, minimum: 0 }
+            saved_ratio:
+              type: number
+              minimum: 0
+              maximum: 1
+    AdminHealth:
+      type: object
+      required: [java, python]
+      properties:
+        java:
+          type: object
+          required: [status]
+          properties:
+            status: { type: string, enum: [up, down] }
+        python:
+          type: object
+          required: [status]
+          properties:
+            status: { type: string, enum: [up, down] }
+            detail:
+              type: [object, "null"]
+              description: Python /healthz 原始响应；不可达时为 null。
     Error:
       type: object
       required: [code, message]

@@ -37,6 +37,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 @JsonPropertyOrder({
   ReviewResult.JSON_PROPERTY_REVIEW_ID,
   ReviewResult.JSON_PROPERTY_CONTRACT_ID,
+  ReviewResult.JSON_PROPERTY_VERSION,
+  ReviewResult.JSON_PROPERTY_RUN_ID,
   ReviewResult.JSON_PROPERTY_STATUS,
   ReviewResult.JSON_PROPERTY_CREATED_AT,
   ReviewResult.JSON_PROPERTY_COMPLETED_AT,
@@ -53,6 +55,14 @@ public class ReviewResult implements Serializable {
   public static final String JSON_PROPERTY_CONTRACT_ID = "contract_id";
   @jakarta.annotation.Nonnull
   private UUID contractId;
+
+  public static final String JSON_PROPERTY_VERSION = "version";
+  @jakarta.annotation.Nullable
+  private Integer version;
+
+  public static final String JSON_PROPERTY_RUN_ID = "run_id";
+  @jakarta.annotation.Nullable
+  private String runId;
 
   /**
    * Gets or Sets status
@@ -164,6 +174,57 @@ public class ReviewResult implements Serializable {
     this.contractId = contractId;
   }
 
+  public ReviewResult version(@jakarta.annotation.Nullable Integer version) {
+    
+    this.version = version;
+    return this;
+  }
+
+  /**
+   * 本次审查对应的合同版本（Stage 11 起落库）。
+   * minimum: 1
+   * @return version
+   */
+  @jakarta.annotation.Nullable
+  @JsonProperty(value = JSON_PROPERTY_VERSION, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+
+  public Integer getVersion() {
+    return version;
+  }
+
+
+  @JsonProperty(value = JSON_PROPERTY_VERSION, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+  public void setVersion(@jakarta.annotation.Nullable Integer version) {
+    this.version = version;
+  }
+
+  public ReviewResult runId(@jakarta.annotation.Nullable String runId) {
+    
+    this.runId = runId;
+    return this;
+  }
+
+  /**
+   * Python 运行 ID（run.started 捕获），断点恢复定位用。
+   * @return runId
+   */
+  @jakarta.annotation.Nullable
+  @JsonProperty(value = JSON_PROPERTY_RUN_ID, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+
+  public String getRunId() {
+    return runId;
+  }
+
+
+  @JsonProperty(value = JSON_PROPERTY_RUN_ID, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+  public void setRunId(@jakarta.annotation.Nullable String runId) {
+    this.runId = runId;
+  }
+
   public ReviewResult status(@jakarta.annotation.Nonnull StatusEnum status) {
     
     this.status = status;
@@ -254,7 +315,7 @@ public class ReviewResult implements Serializable {
   }
 
   /**
-   * Get findings
+   * 审查发现明细，来自 run.completed 的 findings 字段（与 events.schema.json 的 Finding 同构，已剔除 stale）。运行未完成时为空数组。
    * @return findings
    */
   @jakarta.annotation.Nonnull
@@ -284,6 +345,8 @@ public class ReviewResult implements Serializable {
     ReviewResult reviewResult = (ReviewResult) o;
     return Objects.equals(this.reviewId, reviewResult.reviewId) &&
         Objects.equals(this.contractId, reviewResult.contractId) &&
+        Objects.equals(this.version, reviewResult.version) &&
+        Objects.equals(this.runId, reviewResult.runId) &&
         Objects.equals(this.status, reviewResult.status) &&
         Objects.equals(this.createdAt, reviewResult.createdAt) &&
         Objects.equals(this.completedAt, reviewResult.completedAt) &&
@@ -292,7 +355,7 @@ public class ReviewResult implements Serializable {
 
   @Override
   public int hashCode() {
-    return Objects.hash(reviewId, contractId, status, createdAt, completedAt, findings);
+    return Objects.hash(reviewId, contractId, version, runId, status, createdAt, completedAt, findings);
   }
 
   @Override
@@ -301,6 +364,8 @@ public class ReviewResult implements Serializable {
     sb.append("class ReviewResult {\n");
     sb.append("    reviewId: ").append(toIndentedString(reviewId)).append("\n");
     sb.append("    contractId: ").append(toIndentedString(contractId)).append("\n");
+    sb.append("    version: ").append(toIndentedString(version)).append("\n");
+    sb.append("    runId: ").append(toIndentedString(runId)).append("\n");
     sb.append("    status: ").append(toIndentedString(status)).append("\n");
     sb.append("    createdAt: ").append(toIndentedString(createdAt)).append("\n");
     sb.append("    completedAt: ").append(toIndentedString(completedAt)).append("\n");

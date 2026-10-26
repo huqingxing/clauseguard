@@ -178,6 +178,11 @@
           "additionalProperties": false
         },
         "findings_count": { "type": "integer", "minimum": 0, "description": "汇总的审查发现条数。" },
+        "findings": {
+          "type": "array",
+          "description": "Stage 12：审查发现明细（已剔除 stale），供 Web 工作台风险清单直接渲染，免去前端从事件流拼装。",
+          "items": { "$ref": "#/$defs/Finding" }
+        },
         "degraded": {
           "type": "boolean",
           "default": false,
@@ -327,7 +332,68 @@
       "examples": [
         { "seq": 8, "ts": "2026-10-22T10:00:10Z", "type": "run.completed", "usage": { "input_tokens": 21000, "output_tokens": 4200, "cost_cny": 0.86 }, "findings_count": 17, "degraded": false, "quality": { "verified_rate": 0.9412, "rework_count": 1, "unverified_count": 1 } },
         { "seq": 14, "ts": "2026-10-24T13:05:00Z", "type": "run.completed", "usage": { "input_tokens": 21000, "output_tokens": 4200, "cost_cny": 0.86 }, "findings_count": 17, "degraded": false, "quality": { "verified_rate": 0.9412, "rework_count": 1, "unverified_count": 1 }, "artifact": { "object_key": "artifacts/contract-7f3a/v1/annotated.docx", "download_url": "http://localhost:9000/clauseguard/artifacts/contract-7f3a/v1/annotated.docx?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20261024%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261024T130500Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "comments_count": 5, "size_bytes": 48213 } },
-        { "seq": 16, "ts": "2026-10-25T09:12:00Z", "type": "run.completed", "usage": { "input_tokens": 1400, "output_tokens": 280, "cost_cny": 0.06 }, "findings_count": 18, "degraded": false, "quality": { "verified_rate": 1.0, "rework_count": 0, "unverified_count": 0 }, "incremental": { "mode": "incremental", "baseline_version": 1, "changed_count": 2, "added_count": 1, "removed_count": 1, "unchanged_count": 36, "reused_findings": 15, "stale_findings": 1, "cache_hits": 15, "cache_misses": 2, "cache_hit_rate": 0.8824, "changed_clause_ids": ["doc#0004", "doc#0011"], "added_clause_ids": ["doc#0039"], "removed_clause_ids": ["doc#0021"] } }
+        { "seq": 16, "ts": "2026-10-25T09:12:00Z", "type": "run.completed", "usage": { "input_tokens": 1400, "output_tokens": 280, "cost_cny": 0.06 }, "findings_count": 18, "degraded": false, "quality": { "verified_rate": 1.0, "rework_count": 0, "unverified_count": 0 }, "incremental": { "mode": "incremental", "baseline_version": 1, "changed_count": 2, "added_count": 1, "removed_count": 1, "unchanged_count": 36, "reused_findings": 15, "stale_findings": 1, "cache_hits": 15, "cache_misses": 2, "cache_hit_rate": 0.8824, "changed_clause_ids": ["doc#0004", "doc#0011"], "added_clause_ids": ["doc#0039"], "removed_clause_ids": ["doc#0021"] } },
+        { "seq": 21, "ts": "2026-10-26T10:00:00Z", "type": "run.completed", "usage": { "input_tokens": 3000, "output_tokens": 600, "cost_cny": 0.12 }, "findings_count": 1, "degraded": false, "quality": { "verified_rate": 1.0, "rework_count": 0, "unverified_count": 0 }, "findings": [ { "clause_id": "doc#0007", "agent": "commercial-v1", "risk_type": "付款条件缺失", "risk_level": "high", "summary": "未约定逾期付款违约金，救济手段不足。", "suggestion": "增加「每逾期一日按合同总额 0.05% 支付违约金」条款。", "evidence": "买方应在验收合格后支付货款。", "stale": false, "citations": [ { "source_id": "LAW-001", "title": "《民法典》第五百八十六条", "excerpt": "当事人可以约定一方向对方给付定金作为债权的担保……", "url": null } ] } ] }
+      ]
+    },
+    "Finding": {
+      "type": "object",
+      "title": "finding",
+      "description": "Stage 12：run.completed 下发的审查发现明细，与 ReviewState.Finding 同构（恒不含 stale）。",
+      "required": ["clause_id", "agent", "risk_type", "risk_level", "summary"],
+      "properties": {
+        "clause_id": { "type": "string", "description": "关联条款 ID，点击定位与批注锚点共用。" },
+        "agent": { "type": "string", "description": "产出该发现的专家 Agent 名（如 commercial-v1）。" },
+        "risk_type": { "type": "string", "description": "风险类别标签，前端筛选维度。" },
+        "risk_level": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "unverified"],
+          "description": "风险等级；unverified 为引用校验降级值。"
+        },
+        "summary": { "type": "string", "description": "发现摘要，面向业务人员的结论。" },
+        "suggestion": { "type": "string", "default": "", "description": "修改建议。" },
+        "evidence": { "type": "string", "default": "", "description": "条款原文逐字片段，定位风险位置用。" },
+        "stale": {
+          "type": "boolean",
+          "default": false,
+          "description": "Stage 11：条款已删除的历史结论标记（明细中恒为 false）。"
+        },
+        "citations": {
+          "type": "array",
+          "description": "白名单引用；来源只能是检索结果，前端可展开核对。",
+          "items": {
+            "type": "object",
+            "required": ["source_id", "title", "excerpt"],
+            "properties": {
+              "source_id": { "type": "string" },
+              "title": { "type": "string" },
+              "excerpt": { "type": "string" },
+              "url": { "type": ["string", "null"] }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false,
+      "examples": [
+        {
+          "clause_id": "doc#0007",
+          "agent": "commercial-v1",
+          "risk_type": "付款条件缺失",
+          "risk_level": "high",
+          "summary": "未约定逾期付款违约金，救济手段不足。",
+          "suggestion": "增加「每逾期一日按合同总额 0.05% 支付违约金」条款。",
+          "evidence": "买方应在验收合格后支付货款。",
+          "stale": false,
+          "citations": [
+            {
+              "source_id": "LAW-001",
+              "title": "《民法典》第五百八十六条",
+              "excerpt": "当事人可以约定一方向对方给付定金作为债权的担保……",
+              "url": null
+            }
+          ]
+        }
       ]
     },
     "RunFailed": {

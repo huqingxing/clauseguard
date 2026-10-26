@@ -36,6 +36,9 @@ from langgraph.types import Command
 
 from app.agents.settings import AgentSettings, get_agent_settings
 from app.agents.spec import ExpertSpec, build_expert_agent, default_chat_model
+from app.contracts.models import Citation as EventCitation
+from app.contracts.models import Finding as EventFinding
+from app.contracts.models import RiskLevel
 from app.db import DbPool, InMemoryRunRegistry, RunRegistry, thread_id_for
 from app.events import SENTINEL, EventEmitter, EventType
 from app.graph.build import build_graph
@@ -103,6 +106,7 @@ def _make_initial_state(
     version: int = 0,
     mode: str = FULL_MODE,
     base_version: int = 0,
+    source: dict[str, Any] | None = None,
 ) -> ReviewState:
     # 预算来自编排配置（token/成本/时限三闸）；deadline<=0 表示不设时限。
     resolved = settings if settings is not None else get_agent_settings()
@@ -139,6 +143,8 @@ def _make_initial_state(
         # 由 diff 节点按 version-1 推断（Java 可显式指定基线版本）。
         "review_mode": mode,
         "base_version": base_version,
+        # ---- Stage 12 合同源（Java 上传时透传；ingest 据此下载解析）----
+        "source": source or {},
     }
 
 
@@ -196,6 +202,48 @@ def _incremental_of(result: ReviewState) -> dict[str, Any]:
     if not isinstance(info, IncrementalInfo):
         return {"mode": FULL_MODE, "reused_findings": 0, "cache_hit_rate": 0.0}
     return info.model_dump(mode="json")
+
+
+def _findings_of(result: ReviewState) -> list[dict[str, Any]]:
+    """图终态 findings → run.completed.findings 明细（Stage 12 工作台数据源）。
+
+    为什么随终态事件下发明细：Web 工作台的风险清单需要 clause_id/agent/risk_level/
+    summary/suggestion/citations 全字段，若只给 findings_count，前端就得从事件流里
+    逐条拼装（message.delta 只有 summary），丢字段且与 Java 重放存储双源不一致。
+    明细恒剔除 stale（Stage 11 口径）：删除条款的历史结论只在 state 里追溯。
+
+    为什么显式投影而不是 model_dump 直出：内部 Finding 带 citation_whitelist
+    （Critic 引擎校验快照，铁律 3 之外的内部字段），事件契约 Finding 是
+    additionalProperties=false，整体 dump 会被 pydantic 拒收。经契约模型
+    构造一次，契约漂移在此 fail-fast，而不是等 SSE 消费者炸。
+    """
+    findings = result.get("findings") or []
+    payload: list[dict[str, Any]] = []
+    for finding in active_findings(list(findings)):
+        event_finding = EventFinding(
+            clause_id=finding.clause_id,
+            agent=finding.agent,
+            risk_type=finding.risk_type,
+            # 事件契约把 risk_level 收成枚举：内部值越界（不在 low/medium/high/
+            # unverified）时在此 fail-fast，而不是带病下发让前端按未知档位渲染。
+            risk_level=RiskLevel(finding.risk_level),
+            summary=finding.summary,
+            suggestion=finding.suggestion,
+            evidence=finding.evidence,
+            # active_findings 已剔除 stale，明细里恒为 false；显式写出口径。
+            stale=False,
+            citations=[
+                EventCitation(
+                    source_id=citation.source_id,
+                    title=citation.title,
+                    excerpt=citation.excerpt,
+                    url=citation.url,
+                )
+                for citation in finding.citations
+            ],
+        )
+        payload.append(event_finding.model_dump(mode="json"))
+    return payload
 
 
 async def _persist_event_seq(registry: Any, run_id: str, emitter: EventEmitter) -> None:
@@ -317,6 +365,8 @@ async def _run_pipeline(
             degraded=bool(result.get("degraded")),
             quality=_quality_of(result),
             incremental=_incremental_of(result),
+            # Stage 12：明细随终态下发（已剔除 stale），Java 重放存储与工作台共用。
+            findings=_findings_of(result),
             **artifact_field,
         )
         await _persist_event_seq(registry, run_id, emitter)
@@ -452,6 +502,12 @@ def create_app(
         mode_raw = str((raw or {}).get("mode") or FULL_MODE).lower()
         mode = INCREMENTAL_MODE if mode_raw == INCREMENTAL_MODE else FULL_MODE
         base_version = int((raw or {}).get("base_version") or 0)
+        # Stage 12：合同源由 Java 上传时透传（download_url 指向 Java 内容端点）；
+        # ingest 据此经 REST 下载并真实解析出条款。缺省即无源，ingest 显式降级。
+        source_raw = (raw or {}).get("source")
+        source: dict[str, Any] | None = (
+            {str(k): v for k, v in source_raw.items()} if isinstance(source_raw, dict) else None
+        )
         trace_id = parse_traceparent(request.headers.get("traceparent"))
         run_id = f"run-{uuid.uuid4().hex[:8]}"
         emitter = EventEmitter()
@@ -468,6 +524,7 @@ def create_app(
             version=version,
             mode=mode,
             base_version=base_version,
+            source=source,
         )
         # run_id → 断点元信息落库（Postgres）或内存（测试），重启后仍可定位 thread_id。
         # event_seq 随中断/完成时更新（_persist_event_seq），resume 端点据此续接事件序号。

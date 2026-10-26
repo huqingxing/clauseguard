@@ -218,6 +218,56 @@ public class ReviewApi extends BaseApi {
         return apiClient.invokeAPI("/api/v1/reviews/{id}", HttpMethod.GET, uriVariables, localVarQueryParams, localVarPostBody, localVarHeaderParams, localVarCookieParams, localVarFormParams, localVarAccept, localVarContentType, localVarAuthNames, localReturnType);
     }
     /**
+     * 获取批注回写产物（带批注的 Word）
+     * Stage 12：前端只认 Java——本端点从 run.completed 事件的 artifact 字段解析预签名 URL 并 302 跳转，浏览器不直连 MinIO。未回写（占位/未完成）时返回 404。
+     * <p><b>302</b> - 重定向到带签名的下载 URL（限时有效）。
+     * <p><b>404</b> - 资源不存在。
+     * @param id  (required)
+     * @throws RestClientException if an error occurs while attempting to invoke the API
+     */
+    public void getReviewArtifact(@jakarta.annotation.Nonnull UUID id) throws RestClientException {
+        getReviewArtifactWithHttpInfo(id);
+    }
+
+    /**
+     * 获取批注回写产物（带批注的 Word）
+     * Stage 12：前端只认 Java——本端点从 run.completed 事件的 artifact 字段解析预签名 URL 并 302 跳转，浏览器不直连 MinIO。未回写（占位/未完成）时返回 404。
+     * <p><b>302</b> - 重定向到带签名的下载 URL（限时有效）。
+     * <p><b>404</b> - 资源不存在。
+     * @param id  (required)
+     * @return ResponseEntity&lt;Void&gt;
+     * @throws RestClientException if an error occurs while attempting to invoke the API
+     */
+    public ResponseEntity<Void> getReviewArtifactWithHttpInfo(@jakarta.annotation.Nonnull UUID id) throws RestClientException {
+        Object localVarPostBody = null;
+        
+        // verify the required parameter 'id' is set
+        if (id == null) {
+            throw new HttpClientErrorException(HttpStatus.BAD_REQUEST, "Missing the required parameter 'id' when calling getReviewArtifact");
+        }
+        
+        // create path and map variables
+        final Map<String, Object> uriVariables = new HashMap<String, Object>();
+        uriVariables.put("id", id);
+
+        final MultiValueMap<String, String> localVarQueryParams = new LinkedMultiValueMap<String, String>();
+        final HttpHeaders localVarHeaderParams = new HttpHeaders();
+        final MultiValueMap<String, String> localVarCookieParams = new LinkedMultiValueMap<String, String>();
+        final MultiValueMap<String, Object> localVarFormParams = new LinkedMultiValueMap<String, Object>();
+
+        final String[] localVarAccepts = { 
+            "application/json"
+         };
+        final List<MediaType> localVarAccept = apiClient.selectHeaderAccept(localVarAccepts);
+        final String[] localVarContentTypes = {  };
+        final MediaType localVarContentType = apiClient.selectHeaderContentType(localVarContentTypes);
+
+        String[] localVarAuthNames = new String[] {  };
+
+        ParameterizedTypeReference<Void> localReturnType = new ParameterizedTypeReference<Void>() {};
+        return apiClient.invokeAPI("/api/v1/reviews/{id}/artifact", HttpMethod.GET, uriVariables, localVarQueryParams, localVarPostBody, localVarHeaderParams, localVarCookieParams, localVarFormParams, localVarAccept, localVarContentType, localVarAuthNames, localReturnType);
+    }
+    /**
      * 分页查询审查发现
      * 
      * <p><b>200</b> - 分页发现列表。

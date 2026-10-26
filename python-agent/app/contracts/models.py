@@ -258,28 +258,54 @@ class Incremental(BaseModel):
     )
 
 
-class RunCompleted(BaseModel):
+class RiskLevel(Enum):
     """
-    审查运行完成，携带总用量、发现数与 Critic 质量指标。
+    风险等级；unverified 为引用校验降级值。
+    """
+
+    low = 'low'
+    medium = 'medium'
+    high = 'high'
+    unverified = 'unverified'
+
+
+class Citation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    source_id: str
+    title: str
+    excerpt: str
+    url: Optional[str] = None
+
+
+class Finding(BaseModel):
+    """
+    Stage 12：run.completed 下发的审查发现明细，与 ReviewState.Finding 同构（恒不含 stale）。
     """
 
     model_config = ConfigDict(
         extra='forbid',
     )
-    seq: conint(ge=0) = Field(..., description='单调递增整数。')
-    ts: datetime = Field(..., description='RFC3339 事件发生时间，UTC。')
-    type: Literal['run.completed'] = Field(..., description='事件类型，点分小写。')
-    usage: Usage = Field(..., description='本次运行的总 token 用量与估算成本。')
-    findings_count: conint(ge=0) = Field(..., description='汇总的审查发现条数。')
-    degraded: Optional[bool] = Field(
-        False,
-        description='是否发生降级：预算超限跳过低优先级专家（ip/data/compliance）、节点失败或 Critic 因预算耗尽放弃打回时为 true。',
+    clause_id: str = Field(..., description='关联条款 ID，点击定位与批注锚点共用。')
+    agent: str = Field(
+        ..., description='产出该发现的专家 Agent 名（如 commercial-v1）。'
     )
-    quality: Quality = Field(
-        ..., description='Critic 确定性校验的质量指标（Stage 8）。'
+    risk_type: str = Field(..., description='风险类别标签，前端筛选维度。')
+    risk_level: RiskLevel = Field(
+        ..., description='风险等级；unverified 为引用校验降级值。'
     )
-    artifact: Optional[Artifact] = None
-    incremental: Optional[Incremental] = None
+    summary: str = Field(..., description='发现摘要，面向业务人员的结论。')
+    suggestion: Optional[str] = Field('', description='修改建议。')
+    evidence: Optional[str] = Field(
+        '', description='条款原文逐字片段，定位风险位置用。'
+    )
+    stale: Optional[bool] = Field(
+        False, description='Stage 11：条款已删除的历史结论标记（明细中恒为 false）。'
+    )
+    citations: Optional[list[Citation]] = Field(
+        None, description='白名单引用；来源只能是检索结果，前端可展开核对。'
+    )
 
 
 class RunFailed(BaseModel):
@@ -296,6 +322,34 @@ class RunFailed(BaseModel):
     code: str = Field(..., description='机器可读错误码，如 LLM_TIMEOUT。')
     message: str = Field(..., description='人类可读错误描述。')
     retryable: bool = Field(..., description='是否可安全重试。')
+
+
+class RunCompleted(BaseModel):
+    """
+    审查运行完成，携带总用量、发现数与 Critic 质量指标。
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    seq: conint(ge=0) = Field(..., description='单调递增整数。')
+    ts: datetime = Field(..., description='RFC3339 事件发生时间，UTC。')
+    type: Literal['run.completed'] = Field(..., description='事件类型，点分小写。')
+    usage: Usage = Field(..., description='本次运行的总 token 用量与估算成本。')
+    findings_count: conint(ge=0) = Field(..., description='汇总的审查发现条数。')
+    findings: Optional[list[Finding]] = Field(
+        None,
+        description='Stage 12：审查发现明细（已剔除 stale），供 Web 工作台风险清单直接渲染，免去前端从事件流拼装。',
+    )
+    degraded: Optional[bool] = Field(
+        False,
+        description='是否发生降级：预算超限跳过低优先级专家（ip/data/compliance）、节点失败或 Critic 因预算耗尽放弃打回时为 true。',
+    )
+    quality: Quality = Field(
+        ..., description='Critic 确定性校验的质量指标（Stage 8）。'
+    )
+    artifact: Optional[Artifact] = None
+    incremental: Optional[Incremental] = None
 
 
 class ClauseguardSseEvents(

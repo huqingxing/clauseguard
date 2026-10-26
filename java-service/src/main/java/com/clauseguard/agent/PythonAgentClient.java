@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
@@ -22,6 +24,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Python 编排服务的 SSE 客户端。仅消费事件流并原样转发，不在 Java 侧解释事件语义。
@@ -29,6 +32,8 @@ import java.util.Map;
  */
 @Component
 public class PythonAgentClient {
+
+    private static final Logger logger = LoggerFactory.getLogger(PythonAgentClient.class);
 
     private final WebClient webClient;
     private final ObjectMapper mapper;
@@ -70,11 +75,30 @@ public class PythonAgentClient {
             int version,
             String mode,
             int baseVersion) {
+        return streamRun(reviewId, contractId, traceparent, version, mode, baseVersion, null);
+    }
+
+    /**
+     * Stage 12：带合同源信息的触发入口。source 描述「文件在哪、怎么取」：
+     * download_url 指向 Java 自己的内容端点（Python 经 REST 拉文件，铁律 1），
+     * content_type/version 供 ingest 选择解析器与落基线。Java 不存也不解释文件内容。
+     */
+    public Flux<AgentEvent> streamRun(
+            String reviewId,
+            String contractId,
+            String traceparent,
+            int version,
+            String mode,
+            int baseVersion,
+            Map<String, Object> source) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("contract_id", contractId);
         body.put("version", version);
         body.put("mode", mode == null || mode.isBlank() ? "full" : mode);
         body.put("base_version", baseVersion);
+        if (source != null && !source.isEmpty()) {
+            body.put("source", source);
+        }
         return webClient.post()
                 .uri("/v1/runs")
                 .header("traceparent", traceparent)
@@ -86,6 +110,24 @@ public class PythonAgentClient {
                 .filter(sse -> sse.data() != null && !sse.data().isBlank())
                 .map(sse -> parseData(sse.data()))
                 .transform(CircuitBreakerOperator.of(circuitBreaker));
+    }
+
+    /**
+     * Stage 12：探测 Python /healthz。供 admin 端点聚合双栈健康；
+     * 前端不直连 Python（禁止项），由本方法代理探测。不可达返回 empty（调用方记 down）。
+     */
+    public Optional<String> probeHealth() {
+        try {
+            return Optional.ofNullable(
+                    webClient.get()
+                            .uri("/healthz")
+                            .retrieve()
+                            .bodyToMono(String.class)
+                            .block(Duration.ofSeconds(3)));
+        } catch (Exception ex) {
+            logger.warn("python health probe failed: {}", ex.getMessage());
+            return Optional.empty();
+        }
     }
 
     /**

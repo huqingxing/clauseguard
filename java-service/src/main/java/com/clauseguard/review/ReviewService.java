@@ -4,8 +4,16 @@ import com.clauseguard.agent.AgentUnavailableException;
 import com.clauseguard.agent.PythonAgentClient;
 import com.clauseguard.api.model.ApproveRequest;
 import com.clauseguard.api.model.ApproveResponse;
+import com.clauseguard.api.model.ContractDiff;
+import com.clauseguard.api.model.Finding;
+import com.clauseguard.api.model.FindingCitationsInner;
+import com.clauseguard.api.model.FindingsPage;
 import com.clauseguard.api.model.ReviewCreateRequest;
 import com.clauseguard.api.model.ReviewCreateResponse;
+import com.clauseguard.api.model.ReviewResult;
+import com.clauseguard.contract.ContractNotFoundException;
+import com.clauseguard.contract.ContractRepository;
+import com.clauseguard.contract.domain.Contract;
 import com.clauseguard.events.AgentEvent;
 import com.clauseguard.events.EventReplayStore;
 import com.clauseguard.events.StoredEvent;
@@ -28,10 +36,14 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,6 +70,7 @@ public class ReviewService {
     private final PythonAgentClient agentClient;
     private final CircuitBreaker circuitBreaker;
     private final ObjectMapper mapper;
+    private final ContractRepository contractRepository;
 
     private final Map<String, Set<LiveSubscription>> liveEmitters = new ConcurrentHashMap<>();
     private final Map<String, Boolean> subscribing = new ConcurrentHashMap<>();
@@ -69,7 +82,8 @@ public class ReviewService {
             EventReplayStore replayStore,
             PythonAgentClient agentClient,
             CircuitBreakerRegistry circuitBreakerRegistry,
-            ObjectMapper mapper) {
+            ObjectMapper mapper,
+            ContractRepository contractRepository) {
         this.reviewRepository = reviewRepository;
         this.eventRepository = eventRepository;
         this.approvalRepository = approvalRepository;
@@ -77,22 +91,31 @@ public class ReviewService {
         this.agentClient = agentClient;
         this.circuitBreaker = circuitBreakerRegistry.circuitBreaker("pythonAgent");
         this.mapper = mapper;
+        this.contractRepository = contractRepository;
     }
 
     /**
-     * 创建审查任务：落库 → 生成 review_id → 异步触发 Python（不阻塞返回）。
+     * 创建审查任务：校验合同存在 → 落库 → 生成 review_id → 异步触发 Python（不阻塞返回）。
      * traceparent 来自调用方请求头，缺失时由网关生成，随后透传给 Python。
+     *
+     * Stage 12：合同必须先经上传端点落库（合同不存在即 404，不启动空跑）；
+     * 版本缺省取合同当前版本，source（文件在哪/怎么取）随运行请求透传给 Python。
      */
     public ReviewCreateResponse createReview(ReviewCreateRequest request, String incomingTraceparent) {
+        String contractId = request.getContractId().toString();
+        Contract contract = contractRepository.findFirstByIdOrderByVersionDesc(contractId)
+                .orElseThrow(() -> new ContractNotFoundException(contractId));
         String reviewId = UUID.randomUUID().toString();
         Review review = new Review();
         review.setId(reviewId);
-        review.setContractId(request.getContractId().toString());
+        review.setContractId(contractId);
         // Stage 11：合同版本来自请求（前端「仅重审变更」会带上真实版本号）。
         // 落库版本与透传给 Python 的版本必须是同一个——人工审批的乐观锁与增量 diff
         // 都以它为基准，两处漂移会让审批基线对不上、diff 拿错基线。
-        int version = request.getVersion() == null ? 0 : Math.max(0, request.getVersion());
-        review.setVersion(version == 0 ? 1 : version);
+        // Stage 12：未显式指定时取合同当前版本（上传后直接审查的默认路径）。
+        int requested = request.getVersion() == null ? 0 : Math.max(0, request.getVersion());
+        int version = requested > 0 ? requested : contract.getVersion();
+        review.setVersion(version);
         review.setStatus(ReviewStatus.RUNNING);
         review.setCreatedAt(Instant.now());
         reviewRepository.save(review);
@@ -102,10 +125,25 @@ public class ReviewService {
                 ? incomingTraceparent : generateTraceparent();
         String mode = request.getMode() == null ? "full" : request.getMode().getValue();
         int baseVersion = request.getBaseVersion() == null ? 0 : Math.max(0, request.getBaseVersion());
-        subscribeToAgent(reviewId, request.getContractId().toString(), traceparent, version, mode, baseVersion);
+        subscribeToAgent(
+                reviewId, contractId, traceparent, version, mode, baseVersion, sourceOf(contractId, contract));
         return new ReviewCreateResponse()
                 .reviewId(UUID.fromString(reviewId))
                 .streamUrl(URI.create(streamUrl));
+    }
+
+    /**
+     * Stage 12：构造合同源描述。download_url 指向 Java 自己的内容端点——Python 经 REST
+     * 拉文件（铁律 1：不直连业务库/存储），Java 不解释文件内容，只告诉编排层「从哪拿」。
+     */
+    private static Map<String, Object> sourceOf(String contractId, Contract contract) {
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("object_key", contract.getStorageKey());
+        source.put("download_url", "/api/v1/contracts/" + contractId + "/content");
+        source.put("content_type", contract.getContentType());
+        source.put("version", contract.getVersion());
+        source.put("filename", contract.getFilename());
+        return source;
     }
 
     /**
@@ -117,11 +155,12 @@ public class ReviewService {
             String traceparent,
             int version,
             String mode,
-            int baseVersion) {
+            int baseVersion,
+            Map<String, Object> source) {
         if (subscribing.putIfAbsent(reviewId, Boolean.TRUE) != null) {
             return;
         }
-        agentClient.streamRun(reviewId, contractId, traceparent, version, mode, baseVersion)
+        agentClient.streamRun(reviewId, contractId, traceparent, version, mode, baseVersion, source)
                 .subscribe(
                         event -> handleAgentEvent(reviewId, event),
                         error -> {
@@ -448,6 +487,149 @@ public class ReviewService {
     private String errorMessage(Throwable error) {
         String msg = error.getMessage();
         return msg == null ? error.getClass().getSimpleName() : msg;
+    }
+
+    // ---- Stage 12 查询面：run.completed 的 payload 是唯一事实源，查询只做整形 ----
+
+    /**
+     * 审查结果（含 findings 明细，来自 run.completed.findings，已由 Python 剔除 stale）。
+     * 运行未完成/失败时 findings 为空数组——前端据此区分「还没有结论」与「没有风险」。
+     */
+    public ReviewResult getReviewResult(String reviewId) {
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ReviewNotFoundException(reviewId));
+        ReviewResult result = new ReviewResult();
+        result.setReviewId(UUID.fromString(review.getId()));
+        result.setContractId(UUID.fromString(review.getContractId()));
+        result.setVersion(review.getVersion());
+        result.setRunId(review.getRunId());
+        result.setStatus(ReviewResult.StatusEnum.fromValue(review.getStatus().name().toLowerCase(java.util.Locale.ROOT)));
+        result.setCreatedAt(review.getCreatedAt().atOffset(ZoneOffset.UTC));
+        result.setFindings(toFindings(latestCompletedPayload(reviewId).orElse(null)));
+        return result;
+    }
+
+    /** 分页 findings：先取全量再切片（事件里的明细本身不分页，演示规模无性能问题）。 */
+    public FindingsPage findingsPage(String reviewId, int page, int size) {
+        reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ReviewNotFoundException(reviewId));
+        List<Finding> all = toFindings(latestCompletedPayload(reviewId).orElse(null));
+        int from = Math.min(page * size, all.size());
+        int to = Math.min(from + size, all.size());
+        return new FindingsPage()
+                .items(all.subList(from, to))
+                .page(page)
+                .size(size)
+                .total(all.size());
+    }
+
+    /**
+     * 批注产物下载 URL：从 run.completed 的 artifact 字段解析预签名 URL。
+     * 前端只认 Java（Controller 302 跳转到该 URL），不直连 MinIO。
+     */
+    public Optional<String> artifactDownloadUrl(String reviewId) {
+        return latestCompletedPayload(reviewId)
+                .map(payload -> payload.path("artifact"))
+                .filter(node -> node.isObject() && node.has("download_url"))
+                .map(node -> node.path("download_url").asText());
+    }
+
+    /**
+     * 合同版本 diff：取该合同（目标版本或最近一次）审查的 incremental 账本透传。
+     * Python diff 是单一事实源，Java 不重新计算条款差异。
+     */
+    public ContractDiff contractDiff(String contractId, Integer targetVersion) {
+        Review review = targetVersion == null
+                ? reviewRepository.findFirstByContractIdOrderByCreatedAtDesc(contractId)
+                        .orElseThrow(() -> new ReviewNotFoundException(contractId))
+                : reviewRepository.findFirstByContractIdAndVersionOrderByCreatedAtDesc(contractId, targetVersion)
+                        .orElseThrow(() -> new ReviewNotFoundException(contractId + " v" + targetVersion));
+        ContractDiff diff = new ContractDiff();
+        diff.setContractId(UUID.fromString(contractId));
+        diff.setTargetVersion(review.getVersion());
+        JsonNode incremental = latestCompletedPayload(review.getId())
+                .map(payload -> payload.path("incremental"))
+                .orElse(null);
+        if (incremental == null || !incremental.isObject()) {
+            // 尚无 completed 事件（审查未跑完）：空账本，前端展示「无对比数据」空态。
+            diff.setBaselineVersion(0);
+            diff.setChanged(List.of());
+            diff.setAdded(List.of());
+            diff.setRemoved(List.of());
+            diff.setStaleFindings(0);
+            return diff;
+        }
+        diff.setBaselineVersion(incremental.path("baseline_version").asInt(0));
+        diff.setChanged(stringList(incremental.path("changed_clause_ids")));
+        diff.setAdded(stringList(incremental.path("added_clause_ids")));
+        diff.setRemoved(stringList(incremental.path("removed_clause_ids")));
+        diff.setStaleFindings(incremental.path("stale_findings").asInt(0));
+        return diff;
+    }
+
+    private Optional<JsonNode> latestCompletedPayload(String reviewId) {
+        List<ReviewEvent> events =
+                eventRepository.findByReviewIdAndTypeOrderBySeqAsc(reviewId, TYPE_RUN_COMPLETED);
+        if (events.isEmpty()) {
+            return Optional.empty();
+        }
+        // seq 升序取最后一条：resume 后同一 review 会有第二条 run.completed（审批后续跑），
+        // 以最新一条为准（含 render 产物与最终 findings）。
+        ReviewEvent last = events.get(events.size() - 1);
+        try {
+            return Optional.ofNullable(mapper.readTree(last.getPayload()));
+        } catch (Exception e) {
+            logger.warn("parse run.completed failed for review {}: {}", reviewId, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private static List<Finding> toFindings(JsonNode payload) {
+        if (payload == null) {
+            return List.of();
+        }
+        JsonNode findings = payload.path("findings");
+        if (!findings.isArray()) {
+            return List.of();
+        }
+        List<Finding> mapped = new ArrayList<>();
+        findings.forEach(node -> mapped.add(toFinding(node)));
+        return mapped;
+    }
+
+    private static Finding toFinding(JsonNode node) {
+        Finding finding = new Finding();
+        finding.setClauseId(node.path("clause_id").asText(""));
+        finding.setAgent(node.path("agent").asText(""));
+        finding.setRiskType(node.path("risk_type").asText(""));
+        // 未知等级按 low 收纳：枚举外值是契约破坏，不抛异常中断整个查询面。
+        String level = node.path("risk_level").asText("low");
+        try {
+            finding.setRiskLevel(Finding.RiskLevelEnum.fromValue(level));
+        } catch (IllegalArgumentException ex) {
+            finding.setRiskLevel(Finding.RiskLevelEnum.LOW);
+        }
+        finding.setSummary(node.path("summary").asText(""));
+        finding.setSuggestion(node.path("suggestion").asText(""));
+        finding.setEvidence(node.path("evidence").asText(""));
+        finding.setStale(node.path("stale").asBoolean(false));
+        List<FindingCitationsInner> citations = new ArrayList<>();
+        node.path("citations").forEach(citation -> citations.add(new FindingCitationsInner()
+                .sourceId(citation.path("source_id").asText(""))
+                .title(citation.path("title").asText(""))
+                .excerpt(citation.path("excerpt").asText(""))
+                .url(citation.hasNonNull("url") ? citation.path("url").asText() : null)));
+        finding.setCitations(citations);
+        return finding;
+    }
+
+    private static List<String> stringList(JsonNode node) {
+        if (!node.isArray()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        node.forEach(item -> values.add(item.asText()));
+        return values;
     }
 
     /**

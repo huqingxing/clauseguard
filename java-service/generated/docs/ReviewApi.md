@@ -7,6 +7,7 @@ All URIs are relative to *http://localhost:8080*
 | [**approveReview**](ReviewApi.md#approveReview) | **POST** /api/v1/reviews/{id}/approve | 高风险条款人工审批决定（数组） |
 | [**createReview**](ReviewApi.md#createReview) | **POST** /api/v1/reviews | 创建审查任务 |
 | [**getReview**](ReviewApi.md#getReview) | **GET** /api/v1/reviews/{id} | 查询审查结果 |
+| [**getReviewArtifact**](ReviewApi.md#getReviewArtifact) | **GET** /api/v1/reviews/{id}/artifact | 获取批注回写产物（带批注的 Word） |
 | [**listFindings**](ReviewApi.md#listFindings) | **GET** /api/v1/reviews/{id}/findings | 分页查询审查发现 |
 | [**streamReview**](ReviewApi.md#streamReview) | **GET** /api/v1/reviews/{id}/stream | 订阅该审查运行的 SSE 事件流 |
 
@@ -216,6 +217,72 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | 审查结果与发现列表。 |  -  |
+| **404** | 资源不存在。 |  -  |
+
+
+## getReviewArtifact
+
+> getReviewArtifact(id)
+
+获取批注回写产物（带批注的 Word）
+
+Stage 12：前端只认 Java——本端点从 run.completed 事件的 artifact 字段解析预签名 URL 并 302 跳转，浏览器不直连 MinIO。未回写（占位/未完成）时返回 404。
+
+### Example
+
+```java
+// Import classes:
+import com.clauseguard.api.ApiClient;
+import com.clauseguard.api.ApiException;
+import com.clauseguard.api.Configuration;
+import com.clauseguard.api.models.*;
+import com.clauseguard.api.client.ReviewApi;
+
+public class Example {
+    public static void main(String[] args) {
+        ApiClient defaultClient = Configuration.getDefaultApiClient();
+        defaultClient.setBasePath("http://localhost:8080");
+
+        ReviewApi apiInstance = new ReviewApi(defaultClient);
+        UUID id = UUID.randomUUID(); // UUID | 
+        try {
+            apiInstance.getReviewArtifact(id);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling ReviewApi#getReviewArtifact");
+            System.err.println("Status code: " + e.getCode());
+            System.err.println("Reason: " + e.getResponseBody());
+            System.err.println("Response headers: " + e.getResponseHeaders());
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **id** | **UUID**|  | |
+
+### Return type
+
+null (empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **302** | 重定向到带签名的下载 URL（限时有效）。 |  -  |
 | **404** | 资源不存在。 |  -  |
 
 

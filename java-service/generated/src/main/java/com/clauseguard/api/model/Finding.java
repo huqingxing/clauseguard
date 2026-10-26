@@ -15,57 +15,61 @@ package com.clauseguard.api.model;
 
 import java.util.Objects;
 import java.util.Arrays;
+import com.clauseguard.api.model.FindingCitationsInner;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.annotation.JsonValue;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
 import java.io.Serializable;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 /**
- * Finding
+ * 审查发现。Stage 12：与 contracts/events.schema.json 的 $defs/Finding 严格同构 （run.completed.findings 是唯一事实源），此前声明的 finding_id/category/quote/ references 形状从未实现，本次对齐纠偏。
  */
 @JsonPropertyOrder({
-  Finding.JSON_PROPERTY_FINDING_ID,
   Finding.JSON_PROPERTY_CLAUSE_ID,
-  Finding.JSON_PROPERTY_RISK_LEVEL,
-  Finding.JSON_PROPERTY_CATEGORY,
-  Finding.JSON_PROPERTY_SUMMARY,
-  Finding.JSON_PROPERTY_QUOTE,
-  Finding.JSON_PROPERTY_SUGGESTION,
-  Finding.JSON_PROPERTY_REFERENCES,
   Finding.JSON_PROPERTY_AGENT,
-  Finding.JSON_PROPERTY_CREATED_AT
+  Finding.JSON_PROPERTY_RISK_TYPE,
+  Finding.JSON_PROPERTY_RISK_LEVEL,
+  Finding.JSON_PROPERTY_SUMMARY,
+  Finding.JSON_PROPERTY_SUGGESTION,
+  Finding.JSON_PROPERTY_EVIDENCE,
+  Finding.JSON_PROPERTY_STALE,
+  Finding.JSON_PROPERTY_CITATIONS
 })
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.26.0")
 public class Finding implements Serializable {
   private static final long serialVersionUID = 1L;
 
-  public static final String JSON_PROPERTY_FINDING_ID = "finding_id";
-  @jakarta.annotation.Nonnull
-  private UUID findingId;
-
   public static final String JSON_PROPERTY_CLAUSE_ID = "clause_id";
   @jakarta.annotation.Nonnull
   private String clauseId;
 
+  public static final String JSON_PROPERTY_AGENT = "agent";
+  @jakarta.annotation.Nonnull
+  private String agent;
+
+  public static final String JSON_PROPERTY_RISK_TYPE = "risk_type";
+  @jakarta.annotation.Nonnull
+  private String riskType;
+
   /**
-   * Gets or Sets riskLevel
+   * 风险等级；unverified 为引用校验降级值。
    */
   public enum RiskLevelEnum {
     LOW(String.valueOf("low")),
     
     MEDIUM(String.valueOf("medium")),
     
-    HIGH(String.valueOf("high"));
+    HIGH(String.valueOf("high")),
+    
+    UNVERIFIED(String.valueOf("unverified"));
 
     private String value;
 
@@ -98,60 +102,27 @@ public class Finding implements Serializable {
   @jakarta.annotation.Nonnull
   private RiskLevelEnum riskLevel;
 
-  public static final String JSON_PROPERTY_CATEGORY = "category";
-  @jakarta.annotation.Nonnull
-  private String category;
-
   public static final String JSON_PROPERTY_SUMMARY = "summary";
   @jakarta.annotation.Nonnull
   private String summary;
-
-  public static final String JSON_PROPERTY_QUOTE = "quote";
-  @jakarta.annotation.Nullable
-  private String quote;
 
   public static final String JSON_PROPERTY_SUGGESTION = "suggestion";
   @jakarta.annotation.Nullable
   private String suggestion;
 
-  public static final String JSON_PROPERTY_REFERENCES = "references";
+  public static final String JSON_PROPERTY_EVIDENCE = "evidence";
   @jakarta.annotation.Nullable
-  private List<String> references = new ArrayList<>();
+  private String evidence;
 
-  public static final String JSON_PROPERTY_AGENT = "agent";
+  public static final String JSON_PROPERTY_STALE = "stale";
   @jakarta.annotation.Nullable
-  private String agent;
+  private Boolean stale;
 
-  public static final String JSON_PROPERTY_CREATED_AT = "created_at";
-  @jakarta.annotation.Nonnull
-  private OffsetDateTime createdAt;
+  public static final String JSON_PROPERTY_CITATIONS = "citations";
+  @jakarta.annotation.Nullable
+  private List<FindingCitationsInner> citations = new ArrayList<>();
 
   public Finding() {
-  }
-
-  public Finding findingId(@jakarta.annotation.Nonnull UUID findingId) {
-    
-    this.findingId = findingId;
-    return this;
-  }
-
-  /**
-   * Get findingId
-   * @return findingId
-   */
-  @jakarta.annotation.Nonnull
-  @JsonProperty(value = JSON_PROPERTY_FINDING_ID, required = true)
-  @JsonInclude(value = JsonInclude.Include.ALWAYS)
-
-  public UUID getFindingId() {
-    return findingId;
-  }
-
-
-  @JsonProperty(value = JSON_PROPERTY_FINDING_ID, required = true)
-  @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public void setFindingId(@jakarta.annotation.Nonnull UUID findingId) {
-    this.findingId = findingId;
   }
 
   public Finding clauseId(@jakarta.annotation.Nonnull String clauseId) {
@@ -161,7 +132,7 @@ public class Finding implements Serializable {
   }
 
   /**
-   * Get clauseId
+   * 关联条款 ID，点击定位与批注锚点共用。
    * @return clauseId
    */
   @jakarta.annotation.Nonnull
@@ -179,6 +150,56 @@ public class Finding implements Serializable {
     this.clauseId = clauseId;
   }
 
+  public Finding agent(@jakarta.annotation.Nonnull String agent) {
+    
+    this.agent = agent;
+    return this;
+  }
+
+  /**
+   * 产出该发现的专家 Agent 名（如 commercial-v1）。
+   * @return agent
+   */
+  @jakarta.annotation.Nonnull
+  @JsonProperty(value = JSON_PROPERTY_AGENT, required = true)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+
+  public String getAgent() {
+    return agent;
+  }
+
+
+  @JsonProperty(value = JSON_PROPERTY_AGENT, required = true)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+  public void setAgent(@jakarta.annotation.Nonnull String agent) {
+    this.agent = agent;
+  }
+
+  public Finding riskType(@jakarta.annotation.Nonnull String riskType) {
+    
+    this.riskType = riskType;
+    return this;
+  }
+
+  /**
+   * 风险类别标签，前端筛选维度。
+   * @return riskType
+   */
+  @jakarta.annotation.Nonnull
+  @JsonProperty(value = JSON_PROPERTY_RISK_TYPE, required = true)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+
+  public String getRiskType() {
+    return riskType;
+  }
+
+
+  @JsonProperty(value = JSON_PROPERTY_RISK_TYPE, required = true)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+  public void setRiskType(@jakarta.annotation.Nonnull String riskType) {
+    this.riskType = riskType;
+  }
+
   public Finding riskLevel(@jakarta.annotation.Nonnull RiskLevelEnum riskLevel) {
     
     this.riskLevel = riskLevel;
@@ -186,7 +207,7 @@ public class Finding implements Serializable {
   }
 
   /**
-   * Get riskLevel
+   * 风险等级；unverified 为引用校验降级值。
    * @return riskLevel
    */
   @jakarta.annotation.Nonnull
@@ -204,31 +225,6 @@ public class Finding implements Serializable {
     this.riskLevel = riskLevel;
   }
 
-  public Finding category(@jakarta.annotation.Nonnull String category) {
-    
-    this.category = category;
-    return this;
-  }
-
-  /**
-   * 风险类别，如 违约责任 / 保密义务。
-   * @return category
-   */
-  @jakarta.annotation.Nonnull
-  @JsonProperty(value = JSON_PROPERTY_CATEGORY, required = true)
-  @JsonInclude(value = JsonInclude.Include.ALWAYS)
-
-  public String getCategory() {
-    return category;
-  }
-
-
-  @JsonProperty(value = JSON_PROPERTY_CATEGORY, required = true)
-  @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public void setCategory(@jakarta.annotation.Nonnull String category) {
-    this.category = category;
-  }
-
   public Finding summary(@jakarta.annotation.Nonnull String summary) {
     
     this.summary = summary;
@@ -236,7 +232,7 @@ public class Finding implements Serializable {
   }
 
   /**
-   * 风险摘要。
+   * 发现摘要，面向业务人员的结论。
    * @return summary
    */
   @jakarta.annotation.Nonnull
@@ -252,31 +248,6 @@ public class Finding implements Serializable {
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
   public void setSummary(@jakarta.annotation.Nonnull String summary) {
     this.summary = summary;
-  }
-
-  public Finding quote(@jakarta.annotation.Nullable String quote) {
-    
-    this.quote = quote;
-    return this;
-  }
-
-  /**
-   * 命中原文片段。
-   * @return quote
-   */
-  @jakarta.annotation.Nullable
-  @JsonProperty(value = JSON_PROPERTY_QUOTE, required = false)
-  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
-
-  public String getQuote() {
-    return quote;
-  }
-
-
-  @JsonProperty(value = JSON_PROPERTY_QUOTE, required = false)
-  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
-  public void setQuote(@jakarta.annotation.Nullable String quote) {
-    this.quote = quote;
   }
 
   public Finding suggestion(@jakarta.annotation.Nullable String suggestion) {
@@ -304,87 +275,87 @@ public class Finding implements Serializable {
     this.suggestion = suggestion;
   }
 
-  public Finding references(@jakarta.annotation.Nullable List<String> references) {
+  public Finding evidence(@jakarta.annotation.Nullable String evidence) {
     
-    this.references = references;
+    this.evidence = evidence;
     return this;
   }
 
-  public Finding addReferencesItem(String referencesItem) {
-    if (this.references == null) {
-      this.references = new ArrayList<>();
+  /**
+   * 条款原文逐字片段，定位风险位置用。
+   * @return evidence
+   */
+  @jakarta.annotation.Nullable
+  @JsonProperty(value = JSON_PROPERTY_EVIDENCE, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+
+  public String getEvidence() {
+    return evidence;
+  }
+
+
+  @JsonProperty(value = JSON_PROPERTY_EVIDENCE, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+  public void setEvidence(@jakarta.annotation.Nullable String evidence) {
+    this.evidence = evidence;
+  }
+
+  public Finding stale(@jakarta.annotation.Nullable Boolean stale) {
+    
+    this.stale = stale;
+    return this;
+  }
+
+  /**
+   * Stage 11：条款已删除的历史结论标记（明细中恒为 false）。
+   * @return stale
+   */
+  @jakarta.annotation.Nullable
+  @JsonProperty(value = JSON_PROPERTY_STALE, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+
+  public Boolean getStale() {
+    return stale;
+  }
+
+
+  @JsonProperty(value = JSON_PROPERTY_STALE, required = false)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+  public void setStale(@jakarta.annotation.Nullable Boolean stale) {
+    this.stale = stale;
+  }
+
+  public Finding citations(@jakarta.annotation.Nullable List<FindingCitationsInner> citations) {
+    
+    this.citations = citations;
+    return this;
+  }
+
+  public Finding addCitationsItem(FindingCitationsInner citationsItem) {
+    if (this.citations == null) {
+      this.citations = new ArrayList<>();
     }
-    this.references.add(referencesItem);
+    this.citations.add(citationsItem);
     return this;
   }
 
   /**
-   * 引用白名单条目，模型不得生成 schema 外法条编号。
-   * @return references
+   * 白名单引用；来源只能是检索结果，前端可展开核对。
+   * @return citations
    */
   @jakarta.annotation.Nullable
-  @JsonProperty(value = JSON_PROPERTY_REFERENCES, required = false)
+  @JsonProperty(value = JSON_PROPERTY_CITATIONS, required = false)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
-  public List<String> getReferences() {
-    return references;
+  public List<FindingCitationsInner> getCitations() {
+    return citations;
   }
 
 
-  @JsonProperty(value = JSON_PROPERTY_REFERENCES, required = false)
+  @JsonProperty(value = JSON_PROPERTY_CITATIONS, required = false)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
-  public void setReferences(@jakarta.annotation.Nullable List<String> references) {
-    this.references = references;
-  }
-
-  public Finding agent(@jakarta.annotation.Nullable String agent) {
-    
-    this.agent = agent;
-    return this;
-  }
-
-  /**
-   * 产出该发现的专家 Agent。
-   * @return agent
-   */
-  @jakarta.annotation.Nullable
-  @JsonProperty(value = JSON_PROPERTY_AGENT, required = false)
-  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
-
-  public String getAgent() {
-    return agent;
-  }
-
-
-  @JsonProperty(value = JSON_PROPERTY_AGENT, required = false)
-  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
-  public void setAgent(@jakarta.annotation.Nullable String agent) {
-    this.agent = agent;
-  }
-
-  public Finding createdAt(@jakarta.annotation.Nonnull OffsetDateTime createdAt) {
-    
-    this.createdAt = createdAt;
-    return this;
-  }
-
-  /**
-   * Get createdAt
-   * @return createdAt
-   */
-  @jakarta.annotation.Nonnull
-  @JsonProperty(value = JSON_PROPERTY_CREATED_AT, required = true)
-  @JsonInclude(value = JsonInclude.Include.ALWAYS)
-
-  public OffsetDateTime getCreatedAt() {
-    return createdAt;
-  }
-
-
-  @JsonProperty(value = JSON_PROPERTY_CREATED_AT, required = true)
-  @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public void setCreatedAt(@jakarta.annotation.Nonnull OffsetDateTime createdAt) {
-    this.createdAt = createdAt;
+  public void setCitations(@jakarta.annotation.Nullable List<FindingCitationsInner> citations) {
+    this.citations = citations;
   }
 
 
@@ -397,37 +368,35 @@ public class Finding implements Serializable {
       return false;
     }
     Finding finding = (Finding) o;
-    return Objects.equals(this.findingId, finding.findingId) &&
-        Objects.equals(this.clauseId, finding.clauseId) &&
-        Objects.equals(this.riskLevel, finding.riskLevel) &&
-        Objects.equals(this.category, finding.category) &&
-        Objects.equals(this.summary, finding.summary) &&
-        Objects.equals(this.quote, finding.quote) &&
-        Objects.equals(this.suggestion, finding.suggestion) &&
-        Objects.equals(this.references, finding.references) &&
+    return Objects.equals(this.clauseId, finding.clauseId) &&
         Objects.equals(this.agent, finding.agent) &&
-        Objects.equals(this.createdAt, finding.createdAt);
+        Objects.equals(this.riskType, finding.riskType) &&
+        Objects.equals(this.riskLevel, finding.riskLevel) &&
+        Objects.equals(this.summary, finding.summary) &&
+        Objects.equals(this.suggestion, finding.suggestion) &&
+        Objects.equals(this.evidence, finding.evidence) &&
+        Objects.equals(this.stale, finding.stale) &&
+        Objects.equals(this.citations, finding.citations);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(findingId, clauseId, riskLevel, category, summary, quote, suggestion, references, agent, createdAt);
+    return Objects.hash(clauseId, agent, riskType, riskLevel, summary, suggestion, evidence, stale, citations);
   }
 
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("class Finding {\n");
-    sb.append("    findingId: ").append(toIndentedString(findingId)).append("\n");
     sb.append("    clauseId: ").append(toIndentedString(clauseId)).append("\n");
-    sb.append("    riskLevel: ").append(toIndentedString(riskLevel)).append("\n");
-    sb.append("    category: ").append(toIndentedString(category)).append("\n");
-    sb.append("    summary: ").append(toIndentedString(summary)).append("\n");
-    sb.append("    quote: ").append(toIndentedString(quote)).append("\n");
-    sb.append("    suggestion: ").append(toIndentedString(suggestion)).append("\n");
-    sb.append("    references: ").append(toIndentedString(references)).append("\n");
     sb.append("    agent: ").append(toIndentedString(agent)).append("\n");
-    sb.append("    createdAt: ").append(toIndentedString(createdAt)).append("\n");
+    sb.append("    riskType: ").append(toIndentedString(riskType)).append("\n");
+    sb.append("    riskLevel: ").append(toIndentedString(riskLevel)).append("\n");
+    sb.append("    summary: ").append(toIndentedString(summary)).append("\n");
+    sb.append("    suggestion: ").append(toIndentedString(suggestion)).append("\n");
+    sb.append("    evidence: ").append(toIndentedString(evidence)).append("\n");
+    sb.append("    stale: ").append(toIndentedString(stale)).append("\n");
+    sb.append("    citations: ").append(toIndentedString(citations)).append("\n");
     sb.append("}");
     return sb.toString();
   }
