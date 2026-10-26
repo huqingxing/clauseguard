@@ -185,4 +185,4 @@ recognizes class file versions up to 61.0
 2. **接真模型跑一次评测基线**：把 `MODEL_BACKEND=live` 的召回/误报/引用率作为第二条基线，
    让「39.01% 误报是替身固有成本」这句话有对照数字。
 3. **Postgres checkpoint 下的压测**：当前 MemorySaver 偏乐观，生产形态会引入写盘开销。
-4. **多 worker 吞吐曲线**：`--workers 4/8` 下重跑 `make bench`，验证「加 worker 才加吞吐」的判断。
+4. **多 worker 吞吐曲线**：`uvicorn --workers 4/8` 下重跑压测，验证「加 worker 才加吞吐」的判断。
