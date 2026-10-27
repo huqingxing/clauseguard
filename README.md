@@ -37,7 +37,8 @@
 
 ## 快速开始（3 条命令）
 
-需要：JDK 21、Node 20、Python 3.12 + uv、Docker、GNU make（Windows 可 `choco install make`）。
+需要：JDK 21、Node 22（`web/package.json` 的 `engines` 要求 ≥ 22.18：`node --test` 跑 `.ts`
+靠内置类型剥离，低版本直接报语法错）、Python 3.12 + uv、Docker、GNU make（Windows 可 `choco install make`）。
 
 ```bash
 cp .env.example .env && make up                 # 1. 基础设施：mysql/postgres/redis/minio
@@ -65,7 +66,12 @@ cd web && npm install && npm run dev            # 前端 5173（可选）
 
 ### 界面（web/，两个入口：用户端 3 条路由 + 管理端 4 条路由）
 
-用户端与管理端是**两个独立 HTML 入口**，各自一套导航，产物也分开：用户端包里不含运维/评测代码。
+用户端与管理端是**两个独立 HTML 入口**，各自一套导航。产物按入口切分：`index.html` 引
+`main-*.js`，`admin.html` 引 `admin-*.js`，运维健康 / 评测看板 / 待审批队列的代码只进管理端包
+（用户端首包 `grep "api/v1/admin|运维健康|评测看板|待审批"` 0 命中）。
+**准确说法是「应用代码按入口切分」，不是「两个包毫无共享」**：Element Plus / Vue / vue-router / Pinia
+被 Rollup 合成一个 vendor chunk（`_plugin-vue_export-helper-*.js`，约 1.0 MB），两个入口都引它——
+同一份框架代码没必要打两遍，代价是只开用户端的人也会下载管理端用到的那部分组件。
 
 用户端 http://127.0.0.1:5173 — 按下面顺序走一遍就是一次完整审查：
 
@@ -96,7 +102,16 @@ cd web && npm install && npm run dev            # 前端 5173（可选）
 待审是 `review.status` 的一个取值，单独存表就会与事实源漂移。`waiting_since` 取 `interrupt`
 事件的时间戳——按 `created_at` 算会把运行耗时也算成审核者的等待。
 
-账号在 `application.yml` 的 `clauseguard.security.users`（演示用，生产必须换）。凭证以 HTTP BASIC 存在
+账号只有两个，都写在 `java-service/src/main/resources/application.yml` 的 `clauseguard.security.users`：
+
+| 账号 | 角色 | 能干什么 |
+| --- | --- | --- |
+| `admin` | ADMIN | 进得了四个屏；口令就是该文件里 `admin` 那一行的 `password`（演示口令，随仓库提交） |
+| `user` | USER | 口令对但不是 ADMIN：停在登录卡并显示「该账号没有管理员权限（需要 ADMIN 角色）」——用它验证 403 不会被当成「密码错」 |
+
+**换口令的方式**（上线前必须换，演示口令不能带出本机）：改那两行的 `password` 后重启——启动时
+会把明文 BCrypt 编码后放进内存，内存里不留明文，配置文件本身仍是明文（正因为如此，生产不该继续
+用这份内存用户源，应换成外部用户源 + 密钥管理，本阶段没做）。凭证以 HTTP BASIC 存在
 **当前标签页的 sessionStorage** 里，关标签页即失效；任何 admin 请求返回 401 都会清掉凭证退回登录卡。
 
 分开的理由：这两屏暴露的是内部拓扑（谁探谁、依赖是否连通）与成本结构，不是给签约方看的。
@@ -149,7 +164,7 @@ GRANT ALL PRIVILEGES ON clauseguard.* TO 'clauseguard'@'localhost';
 | `contracts/` | `openapi.yaml`（对外 API）+ `events.schema.json`（跨服务事件，`additionalProperties=false`）+ 代码生成脚本 |
 | `java-service/` | Spring Boot 3.5 / JDK 21，包 `com.clauseguard`：contract / review / eval / admin / events / mcp / observability |
 | `python-agent/` | Python 3.12 + uv，包 `app`：graph（节点与拓扑）/ agents（6 专家）/ tools / prompts（版本化）/ parse / render / incremental / observability |
-| `web/` | Vue3 + Vite + TS + Pinia + vue-router + Element Plus；两个入口（用户端 4 路由 / 管理端 2 屏）、三栏工作台、375px 审批页（只连 Java） |
+| `web/` | Vue3 + Vite + TS + Pinia + vue-router + Element Plus；两个入口（用户端 3 路由 / 管理端 4 条 hash 路由）、三栏工作台、375px 审批页（只连 Java） |
 | `deploy/` | docker-compose、nginx、`otel/`（OTLP 采集器 + 链路验证）、`locust/`（压测）、`demo/`（演示合同生成） |
 | `eval/` | 评测数据集生成、runner、指标、报告（`eval/README.md`） |
 | `docs/` | ADR、阶段验收报告、压测报告、演示脚本（`docs/README.md`） |
@@ -227,15 +242,31 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
     事件插入失败而状态已是 `COMPLETED`，用户端重放看不到终态、永远停在「等待审批」。
     已用 `V4__widen_event_payload.sql` 把列放宽到 MEDIUMTEXT 消除触发条件，
     但「写事件失败会导致状态与事件不一致」这个结构性问题仍在。
+11. **用户端接口仍未鉴权，只有 `/api/v1/admin/**` 受保护**：`SecurityConfig` 里除管理端路径外
+    一律 `permitAll`，所以上传、发起审查、读结果、审批写入、以及 `/api/v1/eval/summary` 都不需要
+    任何凭证——用 `curl` 不带 `-u` 直接打就是 200。管理端那套 BASIC 只是把「运维/成本/审批」这一块
+    关起来，**不是**给整个 API 上的门。任何「用户端看着没有入口」的结论都不等于「接口调不到」，
+    细节与后果见第 5 条。
 
 ## 测试与门禁
 
 ```bash
 make test-py     # pytest（293 passed）
-make test-java   # mvn test（63 tests，需 JDK ≥ 21）
+make test-java   # mvn test（85 tests，需 JDK ≥ 21）
 cd python-agent && uv run ruff check app tests && uv run mypy app
-cd web && npm run build
+make test-web    # node --test（31 passed，需 Node ≥ 22.18：跑 .ts 靠内置类型剥离）
+cd web && npm run build   # vue-tsc -b + vite build，类型错误在这一步拦下
 ```
+
+CI 分两个独立 workflow，按改动路径触发，互不阻塞：
+
+| workflow | 触发 | 跑什么 |
+| --- | --- | --- |
+| `.github/workflows/web.yml` | `web/**` 变动 | `npm ci` → `npm run test:unit` → `npm run build`（Node 22） |
+| `.github/workflows/eval.yml` | `eval/**`、`python-agent/app/**` 变动 | 冒烟/全量评测（确定性，不连真模型） |
+
+前端 job 只跑纯函数单测与构建，**不跑需要真实模型与真实服务的用例**：那些在这里既慢又不稳，
+属于手工验收 + 后续 `web/e2e` 的范围。
 
 跑 Java 测试前先 `java -version` 确认是 21：若报
 `class file version 65.0 ... only recognizes up to 61.0`，是 `JAVA_HOME` 还指着 JDK 17，

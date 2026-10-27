@@ -1,0 +1,48 @@
+# web 前端门禁：单测 + 类型检查/构建。
+#
+# 为什么单独一个 job 而不是塞进 eval.yml：这里的回归（SSE 退避序列、hash 路由表、
+# 等待时长格式化）全是纯函数，不需要 Python 环境、不需要数据库、不需要模型；
+# 独立 job 让它在 PR 里十几秒就给出结论，不和十来分钟的评测抢队列。
+#
+# 为什么不跑浏览器 E2E：puppeteer 要装 Chrome 还要起 8080/5173 两个真实服务，
+# 属于「慢且脆」的那一层，等 web/e2e 固化后再单开一个 job。
+name: web
+
+on:
+  push:
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      # 22.18+ 才默认开启「node --test 直接跑 .ts」的类型剥离；
+      # 与 package.json 的 engines 同一个下限，避免本地能跑、CI 报 TS 语法错。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # npm ci 而不是 npm install：lockfile 与 package.json 不一致时直接失败，
+      # 这正是我们要的信号（CI 上装出和本地不同的树，比装不上更难查）。
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      # build 里含 vue-tsc -b：类型错误在这一步拦下，而不是留给运行时。
+      - name: Type check and build
+        run: npm run build
