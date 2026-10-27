@@ -93,6 +93,18 @@ class AdminControllerTest {
     }
 
     @Test
+    void wrongPasswordReturnsTheSame401JsonAsAnonymous() throws Exception {
+        mockMvc.perform(as("admin", "not-the-password"))
+                .andExpect(status().isUnauthorized())
+                // 这条踩过坑：BasicAuthenticationFilter 用的是它自己的 entry point，不显式覆盖它，
+                // 「密码错」就会被 forward 到 /error 出 Spring 默认错误体，于是同一个接口的 401
+                // 有两种响应体（没凭证一种、凭证错一种），前端没法用同一段代码判断。
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.message").value("需要管理员凭证"));
+    }
+
+    @Test
     void healthRejectsNonAdminWith403Json() throws Exception {
         mockMvc.perform(as("user", "user123"))
                 .andExpect(status().isForbidden())

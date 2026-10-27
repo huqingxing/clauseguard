@@ -38,10 +38,13 @@ const connectionTone = computed(() => {
   return finished ? 'ok' : 'idle'
 })
 
-const approveTo = computed(() => ({
-  name: 'approve',
-  params: { id: run.reviewId || String(route.params.id ?? '') },
-}))
+/**
+ * 审批页在管理端（`admin.html#/approvals/:id`）：拍板的是审核者，不是提交者。
+ * 跨入口只能用真实 <a>，用户端路由表里已经没有审批页，router-link 会找不到目标。
+ */
+const approveHref = computed(
+  () => `/admin.html#/approvals/${run.reviewId || String(route.params.id ?? '')}`,
+)
 
 /** 节点太多会撑爆右栏：只展示最近 14 个，总数另给。 */
 const recentNodes = computed(() => run.nodes.slice(-14))
@@ -74,9 +77,9 @@ function nodeDuration(duration?: number): string {
       class="alert"
     >
       <template #title>{{ run.pendingItems.length }} 条高风险条款待人工审批</template>
-      <router-link :to="approveTo">
+      <a :href="approveHref">
         <el-button type="warning" size="small" style="margin-top: 8px">去审批</el-button>
-      </router-link>
+      </a>
     </el-alert>
 
     <el-alert

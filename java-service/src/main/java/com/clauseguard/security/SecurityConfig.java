@@ -8,7 +8,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -19,6 +18,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 
 import java.io.IOException;
@@ -45,6 +45,12 @@ public class SecurityConfig {
      */
     @Bean
     SecurityFilterChain apiSecurity(HttpSecurity http, ObjectMapper json) throws Exception {
+        AuthenticationEntryPoint unauthorized = (request, response, cause) -> {
+            // 401 按 RFC 7235 必须带 WWW-Authenticate，否则客户端不知道用哪种方案重试。
+            response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Basic realm=\"clauseguard\"");
+            writeJson(response, json, 401, "UNAUTHORIZED", "需要管理员凭证");
+        };
+
         http
                 // 纯 JSON API + 无表单、无 Cookie 会话，CSRF 令牌没有附着点。
                 .csrf(AbstractHttpConfigurer::disable)
@@ -55,17 +61,17 @@ public class SecurityConfig {
                         // 用户端与探针暂时保持开放，是当前阶段的显式取舍，不是遗漏（README 已知限制 5）。
                         .requestMatchers("/api/v1/**", "/actuator/**", "/error").permitAll()
                         .anyRequest().permitAll())
-                .httpBasic(Customizer.withDefaults())
+                // 必须把 entry point 也交给 httpBasic：BasicAuthenticationFilter 用的是它自己那一个，
+                // 「用户名密码错」走的是它而不是 exceptionHandling。不覆盖的话同一个接口会出现两种 401
+                // 响应体（没带凭证是我们的 JSON，凭证错是 Spring 默认错误体 + realm="Realm"），
+                // 前端就没法用同一段代码判断「是不是认证问题」。
+                .httpBasic(basic -> basic.authenticationEntryPoint(unauthorized))
                 // 默认的 X-Frame-Options: DENY 会连「同源 iframe」一起拒掉，而用户端左栏
                 // 正是用同源 iframe 内嵌 PDF 原文——DENY 会让预览白屏。SAMEORIGIN 才是这个
                 // 场景要的边界：别人的站点嵌不了，自己嵌自己可以。
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint((request, response, cause) -> {
-                            // 401 按 RFC 7235 必须带 WWW-Authenticate，否则客户端不知道用哪种方案重试。
-                            response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Basic realm=\"clauseguard\"");
-                            writeJson(response, json, 401, "UNAUTHORIZED", "需要管理员凭证");
-                        })
+                        .authenticationEntryPoint(unauthorized)
                         .accessDeniedHandler((request, response, cause) ->
                                 writeJson(response, json, 403, "FORBIDDEN", "当前账号没有管理员权限")));
         return http.build();

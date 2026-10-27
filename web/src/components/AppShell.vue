@@ -17,10 +17,10 @@ const router = useRouter()
 
 const items = [{ to: '/', label: '合同', name: 'contracts' }]
 
-/** 工作台/详情/审批都算「合同」这一支，高亮不能只按 path 精确匹配。 */
+/** 工作台/详情都算「合同」这一支，高亮不能只按 path 精确匹配。 */
 const activeName = computed(() => {
   const name = String(route.name ?? '')
-  if (name === 'workbench' || name === 'review' || name === 'approve') return 'contracts'
+  if (name === 'workbench' || name === 'review') return 'contracts'
   return name
 })
 

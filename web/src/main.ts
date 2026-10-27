@@ -14,7 +14,7 @@ const path = window.location.pathname
 if (path.startsWith('/admin')) {
   window.location.replace('/admin.html')
 } else if (path === '/eval') {
-  window.location.replace('/admin.html#eval')
+  window.location.replace('/admin.html#/eval')
 } else {
   createApp(App).use(createPinia()).use(router).use(ElementPlus).mount('#app')
 }

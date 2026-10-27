@@ -1,17 +1,15 @@
 /**
- * 用户端路由（4 条）。管理端是另一个入口 admin.html，不在这里。
+ * 用户端路由（3 条）。管理端是另一个入口 admin.html，不在这里。
  *
  * 划分依据是「用户此刻在做什么」而不是技术分层：
  *   /                       合同列表      —— 入口，找合同/传合同
  *   /contracts/:id          工作台        —— 三栏：原文 + 发现 + 运行
  *   /reviews/:id            审查详情      —— 结果视角，可分享的落地页
- *   /reviews/:id/approve    审批页        —— 375px 优先，手机上逐条批
  *
- * 工作台与详情分开的理由：工作台要发起运行（写），详情只读；
- * 把「分享一条链接给同事看结果」与「发起一次新运行」放在同一页面会误操作。
+ * 审批页已移到管理端（`admin.html#/approvals/:id`）：拍板的是审核者，发起审查的是提交者，
+ * 两种角色不该共用一套页面。留在这里会让审核链接落在「提交者」的界面里。
  *
- * 运维健康与评测看板移出本文件：它们暴露双栈拓扑与成本结构，属内部视角，
- * 现在由独立的 admin.html 承载（见 src/admin/AdminApp.vue）。
+ * 运维健康与评测看板同样在管理端：它们暴露双栈拓扑与成本结构，属内部视角。
  */
 
 import { createRouter, createWebHistory } from 'vue-router'
@@ -38,13 +36,6 @@ const router = createRouter({
       component: () => import('../views/ReviewDetailView.vue'),
       props: true,
       meta: { title: '审查详情' },
-    },
-    {
-      path: '/reviews/:id/approve',
-      name: 'approve',
-      component: () => import('../views/ApprovalView.vue'),
-      props: true,
-      meta: { title: '人工审批' },
     },
     // 旧链接兜底：/admin、/eval 已移到独立入口，这里交给 main.ts 做 302 到 admin.html。
     { path: '/:pathMatch(.*)*', redirect: '/' },

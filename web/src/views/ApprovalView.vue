@@ -1,28 +1,25 @@
 <script setup lang="ts">
 /**
- * 路由 `/reviews/:id/approve`：人工审批（375px 优先）。
+ * 管理端 `#/approvals/:id`：人工审批（375px 优先）。
  *
- * 为什么单开一页而不是在工作台弹抽屉：审批人是「被拉进来拍板的人」，不是发起审查的人。
- * 他要的是一条能直接发到手机的链接，打开就是待办清单，不需要看懂三栏。
+ * 为什么这一页在管理端：拍板的是审核者，发起审查的是提交者。链接发给审核者，
+ * 打开就是待办清单，不需要看懂用户端的三栏工作台。
  *
- * 审批基线（contract_version / content_hash）来自 interrupt 事件——事件流从 seq 0 可回放，
- * 所以手机端刷新、直开链接都能重建，不依赖上一个页面的内存状态。
+ * 为什么不复用用户端 pinia 的 run store：管理端只有这一屏要运行态，
+ * 为一个页面把整套 store 带进 admin 包不划算。这里直接订阅同一条事件流——
+ * 事件从 seq 0 可回放，所以手机刷新、直开链接都能重建中断快照，不依赖上个页面的内存。
  */
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { approveReview } from '../api/reviews'
+import { approveReview, getReview, subscribeReview, type ReviewStream } from '../api/reviews'
 import { ApiError } from '../api/http'
-import { useRunStore } from '../stores/run'
-import { useSessionStore } from '../stores/session'
+import { getUsername } from '../api/auth'
 import type { ApprovalDecision, ApproveRequest } from '../types/api'
 import { RISK_TAG_TYPE } from '../types/api'
+import type { InterruptItem } from '../types/events'
+import { isInterrupt, isRunCompleted, isRunFailed } from '../types/events'
 
 const props = defineProps<{ id: string }>()
-
-const router = useRouter()
-const run = useRunStore()
-const session = useSessionStore()
 
 interface Draft {
   decision: ApprovalDecision
@@ -38,17 +35,37 @@ interface PendingGroup {
 }
 
 const drafts = reactive<Record<string, Draft>>({})
+const items = ref<PendingGroup[]>([])
 const submitting = ref(false)
 
-const rawItems = computed(() => run.pendingItems)
+/**
+ * 审批人 = 当前登录的管理员账号。不再让人手填姓名：手填的名字进审计表，
+ * 等于谁都能以别人的名义签字。
+ */
+const operator = getUsername()
+
+/** 乐观锁基线来自 interrupt 事件；没有它不能提交（服务端会 409）。 */
+let baseline: { contract_version: string; content_hash: string } | null = null
+
+let stream: ReviewStream | null = null
+let staleTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * submitted 不是 pending 的终态，而是「这一页的活儿干完了」：
+ * 续跑事件随后还会到，不能让界面自己翻回「已完成」。
+ * stale 是「重放里根本没有中断」：服务重启过、事件超出保留窗口，
+ * 这类链接永远等不到快照，转圈比报错更误导人。
+ */
+const phase = ref<'loading' | 'pending' | 'done' | 'failed' | 'submitted' | 'stale'>('loading')
+const failure = ref('')
 
 /**
  * 按 clause_id 归并：契约里 ApproveRequest 的主键是 clause_id（乐观锁也按条款比对），
  * 不归并会出现「同一条款卡片渲染两次、却只能落一条草稿」的错位。
  */
-const items = computed<PendingGroup[]>(() => {
+function groupItems(raw: InterruptItem[]): PendingGroup[] {
   const map = new Map<string, PendingGroup>()
-  for (const item of rawItems.value) {
+  for (const item of raw) {
     const existing = map.get(item.clause_id)
     if (existing) {
       existing.risks.push({ risk_type: item.risk_type, risk: item.risk, suggestion: item.suggestion })
@@ -62,7 +79,7 @@ const items = computed<PendingGroup[]>(() => {
     }
   }
   return Array.from(map.values())
-})
+}
 
 const decidedCount = computed(
   () => items.value.filter((item) => drafts[item.clause_id]?.decision).length,
@@ -72,19 +89,12 @@ const canSubmit = computed(
   () =>
     items.value.length > 0 &&
     decidedCount.value === items.value.length &&
-    session.operator.trim().length > 0 &&
+    operator.trim().length > 0 &&
     items.value.every((item) => {
       const draft = drafts[item.clause_id]
       return draft?.decision !== 'edit' || draft.edited_text.trim().length > 0
     }),
 )
-
-const state = computed(() => {
-  if (items.value.length) return 'pending'
-  if (run.status === 'completed') return 'done'
-  if (run.status === 'failed') return 'failed'
-  return 'loading'
-})
 
 /** 中断快照到达后初始化草稿：默认「通过」，但必须逐条确认过才算已决策。 */
 function seedDrafts() {
@@ -98,15 +108,13 @@ function seedDrafts() {
 watch(items, seedDrafts, { immediate: true })
 
 async function submit() {
-  const payload = run.interrupt?.payload
-  const version = payload?.contract_version
-  const hash = payload?.content_hash
-  if (version === undefined || !hash) {
+  const snapshot = baseline
+  if (!snapshot) {
     ElMessage.error('缺少中断快照（合同版本/内容哈希），无法审批')
     return
   }
-  if (!session.operator.trim()) {
-    ElMessage.warning('请先填写审批人（会写入审计记录）')
+  if (!operator.trim()) {
+    ElMessage.error('当前标签页没有登录账号，无法写入审计记录')
     return
   }
 
@@ -117,8 +125,8 @@ async function submit() {
       decision: draft.decision,
       comment: draft.comment.trim() || undefined,
       edited_text: draft.decision === 'edit' ? draft.edited_text.trim() : null,
-      contract_version: String(version),
-      content_hash: hash,
+      contract_version: snapshot.contract_version,
+      content_hash: snapshot.content_hash,
     }
   })
 
@@ -135,11 +143,12 @@ async function submit() {
 
   submitting.value = true
   try {
-    await approveReview(run.reviewId || props.id, approvals, session.operator.trim())
-    // 状态切回 running，同一 store 上清掉中断标记即可继续收续跑事件。
-    run.markResumed()
+    await approveReview(props.id, approvals, operator.trim())
+    // 提交成功后主动关流：续跑事件会把这一页从「已提交」翻成「已完成」，
+    // 审核者会以为自己的审批没落库。这一页的职责到「审批已记录」为止。
+    phase.value = 'submitted'
+    stream?.close()
     ElMessage.success('审批已记录，正在续跑')
-    await router.push({ name: 'review', params: { id: props.id } })
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) {
       ElMessage.error('合同版本或内容哈希已变化（合同被改过），本次审批被拒。请回工作台重新发起审查。')
@@ -151,8 +160,57 @@ async function submit() {
   }
 }
 
+/**
+ * 快照只做兜底：链接可能是转发的，打开时这笔审查早就跑完了，
+ * 那种情况下重放里没有 interrupt，页面不该一直转圈。
+ */
+async function loadSnapshot() {
+  try {
+    const review = await getReview(props.id)
+    // 事件流是更权威的答案：它已经给了结论，就别用可能更旧的快照覆盖。
+    if (phase.value !== 'loading') return
+    if (review.status === 'completed') phase.value = 'done'
+    else if (review.status === 'failed') phase.value = 'failed'
+  } catch {
+    // 拿不到就继续等事件流：它自己会重连并全量重放。
+  }
+}
+
 onMounted(() => {
-  void run.attach(props.id)
+  void loadSnapshot()
+  // 重放是秒级完成的；6 秒还停在 loading，说明这条链接的 interrupt 已经不在存储里了。
+  staleTimer = setTimeout(() => {
+    if (phase.value === 'loading') phase.value = 'stale'
+  }, 6000)
+
+  stream = subscribeReview(props.id, {
+    onEvent: (event) => {
+      if (phase.value === 'submitted') return
+      if (isInterrupt(event)) {
+        const payload = event.payload
+        // 没有基线就等于没有乐观锁，卡片点得动也提交不了，宁可停在 loading。
+        if (payload?.contract_version === undefined || !payload.content_hash) return
+        baseline = {
+          contract_version: String(payload.contract_version),
+          content_hash: payload.content_hash,
+        }
+        items.value = groupItems(payload.items ?? [])
+        phase.value = 'pending'
+        if (staleTimer) clearTimeout(staleTimer)
+      } else if (isRunCompleted(event)) {
+        items.value = []
+        phase.value = 'done'
+      } else if (isRunFailed(event)) {
+        failure.value = event.message ?? event.code ?? '运行失败'
+        phase.value = 'failed'
+      }
+    },
+  })
+})
+
+onBeforeUnmount(() => {
+  if (staleTimer) clearTimeout(staleTimer)
+  stream?.close()
 })
 </script>
 
@@ -161,15 +219,29 @@ onMounted(() => {
     <header class="head">
       <h1>人工审批</h1>
       <p class="sub">
-        <span v-if="state === 'pending'">{{ items.length }} 条高风险条款待拍板</span>
-        <span v-else-if="state === 'done'">本次审查已完成</span>
-        <span v-else-if="state === 'failed'">运行失败</span>
+        <span v-if="phase === 'pending'">{{ items.length }} 条高风险条款待拍板</span>
+        <span v-else-if="phase === 'submitted'">审批已提交，正在续跑</span>
+        <span v-else-if="phase === 'done'">本次审查已完成</span>
+        <span v-else-if="phase === 'failed'">运行失败</span>
+        <span v-else-if="phase === 'stale'">中断快照已不可用</span>
         <span v-else>正在读取中断快照…</span>
       </p>
     </header>
 
     <el-alert
-      v-if="state === 'done'"
+      v-if="phase === 'submitted'"
+      type="success"
+      :closable="false"
+      show-icon
+      :title="`审批已记录（${decidedCount} 条），审查已续跑`"
+    >
+      <template #default>
+        <a class="result-link" :href="`/reviews/${props.id}`">查看审查结果 →</a>
+      </template>
+    </el-alert>
+
+    <el-alert
+      v-if="phase === 'done'"
       type="success"
       :closable="false"
       show-icon
@@ -177,14 +249,27 @@ onMounted(() => {
     />
 
     <el-alert
-      v-if="state === 'failed'"
+      v-if="phase === 'stale'"
+      type="warning"
+      :closable="false"
+      show-icon
+      title="这条审批链接已失效（中断快照不在事件存储里）"
+    >
+      <template #default>
+        服务重启或事件超出保留窗口后，审批基线（合同版本 / 内容哈希）就取不回来了。
+        请让提交者在工作台重新发起一次审查，再发新的审批链接。
+      </template>
+    </el-alert>
+
+    <el-alert
+      v-if="phase === 'failed'"
       type="error"
       :closable="false"
       show-icon
-      :title="`运行失败：${run.failure?.message ?? '未知原因'}`"
+      :title="`运行失败：${failure || '未知原因'}`"
     />
 
-    <div v-if="state === 'loading'" class="loading">
+    <div v-if="phase === 'loading'" class="loading">
       <el-skeleton :rows="4" animated />
     </div>
 
@@ -233,7 +318,7 @@ onMounted(() => {
     </div>
 
     <footer class="actions">
-      <el-input v-model="session.operator" size="small" placeholder="审批人（必填）" class="operator" />
+      <span class="operator">审批人：{{ operator || '（未登录）' }}</span>
       <el-button
         type="primary"
         :loading="submitting"
@@ -357,22 +442,34 @@ onMounted(() => {
 
 .actions {
   position: fixed;
-  left: 0;
+  left: 216px;
   right: 0;
   bottom: 0;
+  /* 管理端有 216px 深色侧栏：底栏贴在视口左边会盖住侧栏底部的「当前账号 / 退出」
+     和「返回用户端」。 */
   display: flex;
   gap: 8px;
   align-items: center;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
   background: var(--el-bg-color);
   border-top: 1px solid var(--el-border-color-light);
-  /* 与 shell 的移动端 tabbar 叠在一起时让位，避免两个底栏打架。 */
   z-index: 10;
 }
 
 .operator {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-link {
+  color: var(--el-color-primary);
+  font-size: 12px;
+  text-decoration: none;
 }
 
 .submit {
@@ -387,9 +484,10 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 900px) {
+  /* 管理端在窄屏把侧栏折到顶部，没有底部 tabbar，底栏回到整宽。 */
   .actions {
-    bottom: 56px;
+    left: 0;
   }
 }
 </style>
