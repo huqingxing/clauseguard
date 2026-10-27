@@ -73,7 +73,7 @@ cd web && npm install && npm run dev            # 前端 5173（可选）
 | 3 | `curl localhost:8080/healthz` | `{"status":"ok"}` | 起不来先看「起不来时按顺序核对」表 |
 | 4 | `curl localhost:8000/healthz` | `{"status":"ok","service":"python-agent"}` | 报 502 多半是本机代理，用 `env -u http_proxy -u https_proxy ...` 起 |
 | 5 | `curl -i localhost:8080/api/v1/admin/health` | `401` + `{"code":"UNAUTHORIZED",...}` | 200 说明 SecurityConfig 没生效 |
-| 6 | `curl -u admin:admin123 localhost:8080/api/v1/admin/health` | `200` + `{"java":{"status":"up"},...}` | 401 说明口令不是 `application.yml` 里那一行 |
+| 6 | `curl -u admin:<口令> localhost:8080/api/v1/admin/health` | `200` + `{"java":{"status":"up"},...}` | 401 说明口令不是 `application.yml` 里 `admin` 那一行的 `password` |
 | 7 | `cd web && npm run test:unit && npm run build` | 31 测全绿 + `built in` | 类型错误在 `build` 这一步拦下 |
 | 8 | 浏览器开 `http://127.0.0.1:5173` | 合同列表；上传 `deploy/demo/demo-contract.docx` | 见下「界面」小节的路由表 |
 | 9 | 浏览器开 `http://127.0.0.1:5173/admin.html` | 登录卡（不是管理端内容） | 直接进内容说明登录闸门没生效 |
