@@ -5,21 +5,37 @@
  * 与工作台的区别是「只读」：这是可以发给同事的落地页，不提供发起运行的能力。
  * 数据来源仍走事件流（它本身就是事实源），REST 快照只用于首屏标题与状态。
  */
-import { computed, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { artifactUrl } from '../api/reviews'
 import FindingsPanel from '../components/FindingsPanel.vue'
 import RunPanel from '../components/RunPanel.vue'
 import { useRunStore } from '../stores/run'
 import { REVIEW_STATUS_LABEL, REVIEW_STATUS_TYPE } from '../types/api'
+import { formatWait } from '../utils/wait'
 
 const props = defineProps<{ id: string }>()
+
+/** 审核排期口径：超过 2 小时的待审批在管理端会被标黄，这里对提交者说同一句话。 */
+const APPROVAL_SLA_HOURS = 2
 
 const router = useRouter()
 const run = useRunStore()
 
 const contractId = computed(() => run.snapshot?.contract_id ?? '')
 const hasArtifact = computed(() => Boolean(run.completed?.artifact))
+
+/**
+ * 「已等待」用 interrupt 事件的时间戳算，不用页面打开时间：
+ * 这个页面是可分享的落地页，几小时后才被打开是常态，按打开时间算会显示成「刚刚」。
+ */
+const now = ref(Date.now())
+const waited = computed(() => {
+  const since = run.interrupt?.ts
+  return since ? formatWait(since, now.value) : ''
+})
+
+let tick: ReturnType<typeof setInterval> | null = null
 
 function openContract() {
   if (!contractId.value) return
@@ -36,6 +52,14 @@ function downloadArtifact() {
 
 onMounted(() => {
   void run.attach(props.id)
+  // 一分钟一跳就够：这一行显示的是量级（12 分钟 / 1 小时 5 分），不是秒表。
+  tick = setInterval(() => {
+    now.value = Date.now()
+  }, 60_000)
+})
+
+onBeforeUnmount(() => {
+  if (tick) clearInterval(tick)
 })
 </script>
 
@@ -56,6 +80,24 @@ onMounted(() => {
         <el-button v-if="contractId" size="small" @click="openContract">打开工作台</el-button>
       </div>
     </header>
+
+    <!--
+      待审批状态只说明「在等谁」，不给任何审批入口：
+      拍板的是审核者（管理端），提交者在这页唯一该做的事是等结果或去看原文。
+      连「去管理端」的链接都不放——那是内部入口，给了也点不进去。
+    -->
+    <el-alert
+      v-if="run.status === 'awaiting_approval'"
+      type="warning"
+      :closable="false"
+      show-icon
+      title="等待法务审批中"
+    >
+      <template #default>
+        高风险条款已进入审核者队列<template v-if="waited">，已等待 {{ waited }}</template>。
+        预计 {{ APPROVAL_SLA_HOURS }} 小时内处理完；审批结论会自动回到本页，无需刷新。
+      </template>
+    </el-alert>
 
     <div class="grid">
       <section class="col">

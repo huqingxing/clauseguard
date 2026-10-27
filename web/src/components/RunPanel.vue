@@ -1,19 +1,18 @@
 <script setup lang="ts">
 /**
- * 右栏：运行态（状态 / 待审批入口 / 节点进度 / 摘要 / 事件流）。
+ * 右栏：运行态（状态 / 等待审批的说明 / 节点进度 / 摘要 / 事件流）。
+ * 审批入口在管理端：这里是提交者看进度的地方，放个按钮就等于让两种角色共用一套界面。
  *
  * 直接读 run store 而不是层层传 props：这里展示的就是「当前这一笔运行」的全部侧面，
  * 拆成 6 个 props 只会让父组件多写一遍映射，还得担心漏传。
  */
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
 import { useRunStore } from '../stores/run'
 import EventFeed from './EventFeed.vue'
 import RunSummary from './RunSummary.vue'
 import { REVIEW_STATUS_LABEL, REVIEW_STATUS_TYPE } from '../types/api'
 
 const run = useRunStore()
-const route = useRoute()
 
 const connectionLabel = computed(() => {
   // 终态后连接是「正常结束」而不是「断开」：写成断开会让用户以为出了问题。
@@ -39,14 +38,8 @@ const connectionTone = computed(() => {
 })
 
 /**
- * 审批页在管理端（`admin.html#/approvals/:id`）：拍板的是审核者，不是提交者。
- * 跨入口只能用真实 <a>，用户端路由表里已经没有审批页，router-link 会找不到目标。
+ * 节点太多会撑爆右栏：只展示最近 14 个，总数另给。
  */
-const approveHref = computed(
-  () => `/admin.html#/approvals/${run.reviewId || String(route.params.id ?? '')}`,
-)
-
-/** 节点太多会撑爆右栏：只展示最近 14 个，总数另给。 */
 const recentNodes = computed(() => run.nodes.slice(-14))
 const hiddenNodes = computed(() => Math.max(0, run.nodes.length - recentNodes.value.length))
 const finishedCount = computed(() => run.nodes.filter((node) => node.state === 'finished').length)
@@ -69,6 +62,10 @@ function nodeDuration(duration?: number): string {
       <span v-if="run.reviewId" class="review-id">{{ run.reviewId.slice(0, 8) }}</span>
     </div>
 
+    <!--
+      这里只报状态，不给入口：拍板的是审核者，不是提交者。
+      用户端哪怕留一个「去审批」的链接，也是在把两个角色混回一套界面里。
+    -->
     <el-alert
       v-if="run.status === 'awaiting_approval'"
       type="warning"
@@ -76,10 +73,12 @@ function nodeDuration(duration?: number): string {
       show-icon
       class="alert"
     >
-      <template #title>{{ run.pendingItems.length }} 条高风险条款待人工审批</template>
-      <a :href="approveHref">
-        <el-button type="warning" size="small" style="margin-top: 8px">去审批</el-button>
-      </a>
+      <template #title>
+        {{ run.pendingItems.length }} 条高风险条款等待法务审批
+      </template>
+      <template #default>
+        审核者在管理端处理，结论会自动回到这里。你不需要做任何操作。
+      </template>
     </el-alert>
 
     <el-alert

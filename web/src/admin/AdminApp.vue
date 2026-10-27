@@ -17,15 +17,24 @@ import { ApiError, AuthError, setUnauthorizedHandler } from '../api/http'
 import { clearCredential, getUsername, hasCredential, setCredential } from '../api/auth'
 
 /**
- * 侧栏只列两屏：待审批队列（阶段 5 建）与审批详情是深链接，没有菜单项。
- * 路由表与标题都在 admin/router.ts，这里只管「怎么排」。
+ * 侧栏三项：运维健康、评测看板、待审批。审批详情（/approvals/:id）不占菜单项——
+ * 它是从队列点进去的深链接，给它一个并列的入口会让人以为还有「第四种活儿」。
  */
+const route = useRoute()
+
 const NAV = [
   { to: '/health', label: '运维健康', hint: '双栈探活' },
   { to: '/eval', label: '评测看板', hint: '用量与质量' },
+  { to: '/approvals', label: '待审批', hint: '审核者待办' },
 ]
 
-const route = useRoute()
+/**
+ * 高亮要按前缀判：`/approvals/xxx` 属于「待审批」这一支，
+ * 用 route.path === item.to 精确比较，点进详情后侧栏会一项都不亮。
+ */
+function isActive(path: string): boolean {
+  return route.path === path || route.path.startsWith(`${path}/`)
+}
 
 /**
  * 三态：有凭证但要先向后端确认（checking）、没有可用凭证（login）、已进入（ready）。
@@ -189,7 +198,7 @@ function logout() {
           :key="item.to"
           :to="item.to"
           class="side-item"
-          :class="{ active: route.path === item.to }"
+          :class="{ active: isActive(item.to) }"
         >
           <span>{{ item.label }}</span>
           <small>{{ item.hint }}</small>

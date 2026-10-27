@@ -217,6 +217,9 @@ onBeforeUnmount(() => {
 <template>
   <div class="page">
     <header class="head">
+      <!-- 从队列点进来的人要能回去，且回去后队列会重新拉一次（组件重挂载），
+           刚批完的那条自然就不在了——不需要手动刷新。 -->
+      <router-link :to="{ name: 'approvals' }" class="back-queue">‹ 返回待审批队列</router-link>
       <h1>人工审批</h1>
       <p class="sub">
         <span v-if="phase === 'pending'">{{ items.length }} 条高风险条款待拍板</span>
@@ -344,6 +347,16 @@ onBeforeUnmount(() => {
 .head h1 {
   margin: 0 0 2px;
   font-size: 18px;
+}
+
+/* 类名带 -queue：管理端外壳里已有一个 .back（返回用户端），
+   同名会让「这一页的返回」和「换个入口」在选择器上无法区分。 */
+.back-queue {
+  display: inline-block;
+  margin-bottom: 4px;
+  color: var(--el-color-primary);
+  font-size: 12px;
+  text-decoration: none;
 }
 
 .sub {

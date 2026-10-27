@@ -5,9 +5,8 @@
  * 导航只有「合同」一项——运维与评测已移到独立入口 admin.html（见 src/admin/AdminApp.vue），
  * 用户端不该出现内部视角的入口。单项导航在桌面侧栏仍然保留，因为它是品牌下方的定位锚，删掉反而显得页面没装好。
  *
- * 移动端（<768px）导航沉到底部做成 tab bar——审批人在手机上单手操作，
- * 顶部汉堡菜单要多一次点击，底部栏才是移动端的默认习惯。
- * 只有一项时底部栏没意义，改为「返回列表」——在 375px 审批页里这才是真要按的那个键。
+ * 移动端（<768px）底部只有「返回列表」：一层导航做成 tab bar 就是一条死栏
+ * （点它只是回到当前页），而这一层真正需要的动作只有「退回上一层」。
  */
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -35,7 +34,7 @@ function goBack() {
 </script>
 
 <template>
-  <div class="shell">
+  <div class="shell" :class="{ 'with-tabbar': canGoBack }">
     <aside class="sidebar">
       <div class="brand">
         <span class="brand-mark">CG</span>
@@ -62,17 +61,13 @@ function goBack() {
       <router-view />
     </main>
 
-    <nav class="tabbar">
-      <button v-if="canGoBack" type="button" class="tab" @click="goBack">‹ 返回列表</button>
-      <router-link
-        v-for="item in items"
-        :key="item.to"
-        :to="item.to"
-        class="tab"
-        :class="{ active: activeName === item.name }"
-      >
-        {{ item.label }}
-      </router-link>
+    <!--
+      移动端底部栏只留「返回列表」：用户端从 4 条路由减到 3 条后，navigation 只剩「合同」一项，
+      把它做成 tab 等于一个指向自己的死按钮（首页点它什么也不会发生）。
+      首页没有上一层可回，整条栏都不渲染——留一条空栏比没有栏更让人困惑。
+    -->
+    <nav v-if="canGoBack" class="tabbar">
+      <button type="button" class="tab" @click="goBack">‹ 返回列表</button>
     </nav>
   </div>
 </template>
@@ -169,6 +164,10 @@ function goBack() {
 @media (max-width: 767px) {
   .shell {
     flex-direction: column;
+  }
+
+  /* 只有真的渲染了底栏才留出它的高度：首页没有底栏，固定留 56px 会是一条白边。 */
+  .shell.with-tabbar {
     padding-bottom: 56px;
   }
 
@@ -202,20 +201,14 @@ function goBack() {
   .tab {
     flex: 1;
     padding: 12px 0;
-    /* 同一套样式要同时吃住 <a>（合同）与 <button>（返回列表），故显式清掉按钮默认外观。 */
+    /* 这是个 <button>：清掉默认外观，才和底栏的边框/背景连成一片。 */
     border: 0;
     background: transparent;
     font-family: inherit;
     text-align: center;
     font-size: 13px;
     color: var(--el-text-color-regular);
-    text-decoration: none;
     cursor: pointer;
-  }
-
-  .tab.active {
-    color: var(--el-color-primary);
-    font-weight: 600;
   }
 }
 </style>

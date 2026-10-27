@@ -37,8 +37,15 @@ const router = createRouter({
       props: true,
       meta: { title: '审查详情' },
     },
-    // 旧链接兜底：/admin、/eval 已移到独立入口，这里交给 main.ts 做 302 到 admin.html。
-    { path: '/:pathMatch(.*)*', redirect: '/' },
+    // 兜底落到 404 而不是静默回列表：老审批链接 `/reviews/:id/approve` 被移除后，
+    // 悄悄改写成列表会让人以为点错了地方——地址栏和页面都得说出「这里没有页面」。
+    // 这条不算业务路由，它不承载任何角色职责，只在地址失效时停住。
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('../views/NotFoundView.vue'),
+      meta: { title: '页面不存在' },
+    },
   ],
   scrollBehavior: () => ({ top: 0 }),
 })

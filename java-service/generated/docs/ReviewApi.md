@@ -38,7 +38,7 @@ public class Example {
 
         ReviewApi apiInstance = new ReviewApi(defaultClient);
         UUID id = UUID.randomUUID(); // UUID | 
-        String xOperator = "xOperator_example"; // String | 审批操作人，写入 approval 表用于审计留痕。
+        String xOperator = "xOperator_example"; // String | 审批操作人，写入 approval 表用于审计留痕。 非 ASCII 姓名须按 UTF-8 百分号编码（HTTP 头只能承载 ISO-8859-1， 浏览器对含中文的头会在发出前直接抛错），Java 侧解码后入库。
         List<ApproveRequest> approveRequest = Arrays.asList(); // List<ApproveRequest> | 
         try {
             ApproveResponse result = apiInstance.approveReview(id, xOperator, approveRequest);
@@ -60,7 +60,7 @@ public class Example {
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **id** | **UUID**|  | |
-| **xOperator** | **String**| 审批操作人，写入 approval 表用于审计留痕。 | |
+| **xOperator** | **String**| 审批操作人，写入 approval 表用于审计留痕。 非 ASCII 姓名须按 UTF-8 百分号编码（HTTP 头只能承载 ISO-8859-1， 浏览器对含中文的头会在发出前直接抛错），Java 侧解码后入库。 | |
 | **approveRequest** | [**List&lt;ApproveRequest&gt;**](ApproveRequest.md)|  | |
 
 ### Return type

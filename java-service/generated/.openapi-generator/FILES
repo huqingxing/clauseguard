@@ -2,6 +2,8 @@ docs/AdminApi.md
 docs/AdminHealth.md
 docs/AdminHealthJava.md
 docs/AdminHealthPython.md
+docs/ApprovalQueueItem.md
+docs/ApprovalQueuePage.md
 docs/ApproveRequest.md
 docs/ApproveResponse.md
 docs/ContractApi.md
@@ -45,6 +47,8 @@ src/main/java/com/clauseguard/api/client/ReviewApi.java
 src/main/java/com/clauseguard/api/model/AdminHealth.java
 src/main/java/com/clauseguard/api/model/AdminHealthJava.java
 src/main/java/com/clauseguard/api/model/AdminHealthPython.java
+src/main/java/com/clauseguard/api/model/ApprovalQueueItem.java
+src/main/java/com/clauseguard/api/model/ApprovalQueuePage.java
 src/main/java/com/clauseguard/api/model/ApproveRequest.java
 src/main/java/com/clauseguard/api/model/ApproveResponse.java
 src/main/java/com/clauseguard/api/model/ContractDetail.java

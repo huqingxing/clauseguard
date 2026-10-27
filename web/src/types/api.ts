@@ -132,6 +132,25 @@ export interface AdminHealth {
   python: { status: 'up' | 'down'; detail?: Record<string, unknown> | null }
 }
 
+/** 待审批队列的一行（Stage 5，契约 ApprovalQueueItem）。 */
+export interface ApprovalQueueItem {
+  review_id: string
+  contract_id: string
+  contract_title: string
+  /** 待审的高风险条款数（后端已按 clause_id 去重，不是风险点数）。 */
+  risk_high_count: number
+  created_at: string
+  /** 进入待审批的时间：等待时长按它算，不按 created_at。 */
+  waiting_since: string
+}
+
+export interface ApprovalQueuePage {
+  items: ApprovalQueueItem[]
+  page: number
+  size: number
+  total: number
+}
+
 export const RISK_LABEL: Record<RiskLevel, string> = {
   high: '高风险',
   medium: '中风险',
@@ -150,7 +169,7 @@ export const RISK_TAG_TYPE: Record<RiskLevel, 'danger' | 'warning' | 'primary' |
 export const REVIEW_STATUS_LABEL: Record<ReviewStatus, string> = {
   queued: '排队中',
   running: '审查中',
-  awaiting_approval: '待审批',
+  awaiting_approval: '等待法务审批',
   completed: '已完成',
   failed: '失败',
 }

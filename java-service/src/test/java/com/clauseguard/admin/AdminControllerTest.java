@@ -1,6 +1,8 @@
 package com.clauseguard.admin;
 
 import com.clauseguard.api.model.AdminHealth;
+import com.clauseguard.api.model.ApprovalQueueItem;
+import com.clauseguard.api.model.ApprovalQueuePage;
 import com.clauseguard.security.SecurityConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +44,9 @@ class AdminControllerTest {
 
     @MockBean
     private AdminHealthService adminHealthService;
+
+    @MockBean
+    private ApprovalQueueService approvalQueueService;
 
     private static String basic(String username, String password) {
         return "Basic " + Base64.getEncoder()
@@ -110,5 +115,58 @@ class AdminControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    // ---- Stage 5：待审批队列 ----
+
+    @Test
+    void approvalsRequireAdminCredentials() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/approvals"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        // 带凭证才走到 service：队列是审核者的待办，匿名连「有几条」都不该看到
+        mockMvc.perform(get("/api/v1/admin/approvals")
+                        .header(HttpHeaders.AUTHORIZATION, basic("admin", "admin123")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void approvalsPassPagingThroughAndReturnQueue() throws Exception {
+        when(approvalQueueService.list("WAITING_APPROVAL", 1, 5)).thenReturn(new ApprovalQueuePage()
+                .items(java.util.List.of(new ApprovalQueueItem()
+                        .reviewId(java.util.UUID.fromString("11111111-1111-4111-8111-111111111111"))
+                        .contractId(java.util.UUID.fromString("22222222-2222-4222-8222-222222222222"))
+                        .contractTitle("研发外包合同.docx")
+                        .riskHighCount(2)
+                        .createdAt(java.time.OffsetDateTime.parse("2026-10-27T06:00:00Z"))
+                        .waitingSince(java.time.OffsetDateTime.parse("2026-10-27T06:05:00Z"))))
+                .page(1)
+                .size(5)
+                .total(7));
+
+        mockMvc.perform(get("/api/v1/admin/approvals")
+                        .param("status", "WAITING_APPROVAL")
+                        .param("page", "1")
+                        .param("size", "5")
+                        .header(HttpHeaders.AUTHORIZATION, basic("admin", "admin123")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].contract_title").value("研发外包合同.docx"))
+                .andExpect(jsonPath("$.items[0].risk_high_count").value(2))
+                .andExpect(jsonPath("$.items[0].waiting_since").exists())
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.total").value(7));
+    }
+
+    @Test
+    void unsupportedApprovalStatusReturns400Json() throws Exception {
+        when(approvalQueueService.list("COMPLETED", 0, 20))
+                .thenThrow(new InvalidApprovalStatusException("COMPLETED"));
+
+        mockMvc.perform(get("/api/v1/admin/approvals")
+                        .param("status", "COMPLETED")
+                        .header(HttpHeaders.AUTHORIZATION, basic("admin", "admin123")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_APPROVAL_STATUS"));
     }
 }

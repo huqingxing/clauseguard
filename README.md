@@ -73,9 +73,11 @@ cd web && npm install && npm run dev            # 前端 5173（可选）
 | --- | --- | --- |
 | `/` | 合同列表 | 上传 `deploy/demo/demo-contract.docx`（没有就 `make demo-contract` 生成） |
 | `/contracts/:id` | 工作台 | 三栏：左原文 / 中风险发现 / 右运行态；点「全量审查」 |
-| `/reviews/:id` | 结果页 | 只读落地页，可分享；审批后续跑完成看结果 |
+| `/reviews/:id` | 结果页 | 只读落地页，可分享；`waiting_approval` 时只显示「等待法务审批中」+ 已等待时长 |
 
 审批页不在这里——拍板的是审核者，不是发起审查的提交者，它在管理端（见下）。
+用户端**没有任何审批入口**：没有按钮、没有跳管理端的链接，连「隐藏的入口」都不留
+（旧地址 `/reviews/:id/approve` 由路由兜底回合同列表）。
 
 管理端 http://127.0.0.1:5173/admin（生产 `/admin`，产物 `admin.html`），**第一次打开要先登录**：
 
@@ -86,8 +88,13 @@ cd web && npm install && npm run dev            # 前端 5173（可选）
 | --- | --- | --- |
 | `#/health` | 运维健康 | Java + Python 双栈状态，10 秒轮询（打开 `/admin` 默认落这里） |
 | `#/eval` | 评测看板 | token / 成本 / 校验通过率 / 增量收益（老链接 `/eval`、`/admin#eval` 自动迁移） |
-| `#/approvals` | 待审批队列 | 阶段 5 提供，现在先占住路由位 |
-| `#/approvals/:id` | 审批详情 | 375px 优先，逐条 通过/驳回/改措辞；入口在工作台的「去审批」 |
+| `#/approvals` | 待审批队列 | 审核者的待办：合同名 / 高风险条款数 / 等待时长 / 进入审批；超过 2 小时标黄，30 秒自动刷新 |
+| `#/approvals/:id` | 审批详情 | 375px 优先，逐条 通过/驳回/改措辞；审批人 = 当前登录账号，底栏有「返回待审批队列」 |
+
+队列数据来自 `GET /api/v1/admin/approvals?status=WAITING_APPROVAL&page=0&size=20`，
+挂在 `/api/v1/admin/**` 下，因此和健康页共用同一套 BASIC 鉴权。没有新建队列表：
+待审是 `review.status` 的一个取值，单独存表就会与事实源漂移。`waiting_since` 取 `interrupt`
+事件的时间戳——按 `created_at` 算会把运行耗时也算成审核者的等待。
 
 账号在 `application.yml` 的 `clauseguard.security.users`（演示用，生产必须换）。凭证以 HTTP BASIC 存在
 **当前标签页的 sessionStorage** 里，关标签页即失效；任何 admin 请求返回 401 都会清掉凭证退回登录卡。
@@ -196,17 +203,30 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
    共享同一个 LangGraph checkpoint，第二笔的 `findings` 会累加并出现一批 `unverified`
    （实测 23 → 46）。单笔隔离跑是干净的。属 Stage 9 设计遗留，修法见
    [docs/stage12-acceptance.md](docs/stage12-acceptance.md) 5.1。
-5. **管理端已鉴权，用户端仍未鉴权**：`/api/v1/admin/**` 需要 `ADMIN` 角色（HTTP BASIC，
-   账号在 `application.yml` 的 `clauseguard.security.users`，启动时 BCrypt 编码后进内存，
-   **明文只用于本机演示，生产必须换**）。`/api/v1/**` 其余接口仍是 `permitAll`；审批的
-   `X-Operator` 依旧是「署名」不是「身份」，任何人填名字都能审批。对外上线前必须先接
-   用户认证，否则审计留痕形同虚设。**注意评测接口也是其中之一**：管理端登录卡把两屏都挡在后面，
-   但 `/api/v1/eval/summary` 在网关侧仍放行，绕过页面直接请求照样拿得到成本结构——
-   前端登录只解决「谁在用界面」，不解决「谁能调接口」。
+5. **管理端已鉴权，用户端仍未鉴权**：`/api/v1/admin/**`（含待审批队列）需要 `ADMIN` 角色
+   （HTTP BASIC，账号在 `application.yml` 的 `clauseguard.security.users`，启动时 BCrypt
+   编码后进内存，**明文只用于本机演示，生产必须换**）。`/api/v1/**` 其余接口仍是 `permitAll`。
+   **审批写入端点也在其中**：`POST /api/v1/reviews/{id}/approve` 没锁，绕过管理端页面直接
+   POST 照样能批（`X-Operator` 现在是登录账号，比手填强，但仍是「客户端自称」，
+   不是服务端认定）。要真锁，得先给该路径加上 ADMIN 前缀规则。
+   对外上线前必须先接用户认证，否则审计留痕形同虚设。**注意评测接口也是其中之一**：
+   管理端登录卡把两屏都挡在后面，但 `/api/v1/eval/summary` 在网关侧仍放行，
+   绕过页面直接请求照样拿得到成本结构——前端登录只解决「谁在用界面」，不解决「谁能调接口」。
 6. **压测跑在 mock 后端**：数值反映编排层（下载/切分/6 专家 fan-out/critic/回写），
    不含真实供应商的模型时延与限流。
 7. **Python 侧 resume 是同一条 trace 的第二段根 span**（不是同一个 span 的延续），
    Langfuse 里会显示为两段，用 `clauseguard.resumed` 区分。
+8. **待审批队列不区分「派给谁」**：所有 `AWAITING_APPROVAL` 的审查对每个管理员都一样可见，
+   没有指派人、没有认领、没有并发保护（两人同时打开同一笔，后提交的会拿到 409
+   `CONTRACT_CHANGED`，因为状态已不是待审）。队列只解决「待办在哪儿」，不解决「谁来干」。
+9. **「预计 2 小时」是口径不是测量值**：用户端详情页写的排期与队列标黄阈值用的是同一个常量
+   （`APPROVAL_SLA_HOURS = 2` / `OVERDUE_MS = 2h`），没有按历史审批时长统计。改成真实
+   percentile 需要一张审批耗时的事实表，本阶段不做。
+10. **状态先改、事件后写**：`handleAgentEvent` 先更新 `review.status` 再落 `review_event`，
+    两步不在同一个事务里。Stage 5 实测撞到过——`run.completed` 的 payload 超过 TEXT 上限，
+    事件插入失败而状态已是 `COMPLETED`，用户端重放看不到终态、永远停在「等待审批」。
+    已用 `V4__widen_event_payload.sql` 把列放宽到 MEDIUMTEXT 消除触发条件，
+    但「写事件失败会导致状态与事件不一致」这个结构性问题仍在。
 
 ## 测试与门禁
 

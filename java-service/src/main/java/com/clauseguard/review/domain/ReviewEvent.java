@@ -31,7 +31,9 @@ public class ReviewEvent {
     @Column(name = "type", nullable = false, length = 64)
     private String type;
 
-    @Column(name = "payload", nullable = false, columnDefinition = "TEXT")
+    // MEDIUMTEXT：TEXT 只有 65535 字节，审批续跑后的 run.completed（含全部 findings）
+    // 会超限，插入失败而状态已改——事件丢了，前端就永远停在旧状态。
+    @Column(name = "payload", nullable = false, columnDefinition = "MEDIUMTEXT")
     private String payload;
 
     @Column(name = "ts")

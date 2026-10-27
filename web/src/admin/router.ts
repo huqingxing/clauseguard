@@ -8,8 +8,8 @@
  * 四条路由对应两种视角：
  *   #/health        运维健康    —— 谁探谁、依赖通不通
  *   #/eval          评测看板    —— 成本结构
- *   #/approvals     待审批队列  —— 审核者的入口（阶段 5 建页面）
- *   #/approvals/:id 审批详情    —— 从用户端迁来，链接可以直接发到手机
+ *   #/approvals     待审批队列  —— 审核者的入口：谁的活儿、等了多久
+ *   #/approvals/:id 审批详情    —— 从队列点进来，链接也可以直接发到手机
  */
 import { createRouter, createWebHashHistory } from 'vue-router'
 import AdminView from '../views/AdminView.vue'

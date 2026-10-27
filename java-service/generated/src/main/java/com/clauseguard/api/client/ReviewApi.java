@@ -50,7 +50,7 @@ public class ReviewApi extends BaseApi {
      * <p><b>404</b> - 资源不存在。
      * <p><b>409</b> - 合同版本/内容哈希与中断时基线不一致（合同已被修改），审批被拒，需重拉合同重试。
      * @param id  (required)
-     * @param xOperator 审批操作人，写入 approval 表用于审计留痕。 (required)
+     * @param xOperator 审批操作人，写入 approval 表用于审计留痕。 非 ASCII 姓名须按 UTF-8 百分号编码（HTTP 头只能承载 ISO-8859-1， 浏览器对含中文的头会在发出前直接抛错），Java 侧解码后入库。 (required)
      * @param approveRequest  (required)
      * @return ApproveResponse
      * @throws RestClientException if an error occurs while attempting to invoke the API
@@ -67,7 +67,7 @@ public class ReviewApi extends BaseApi {
      * <p><b>404</b> - 资源不存在。
      * <p><b>409</b> - 合同版本/内容哈希与中断时基线不一致（合同已被修改），审批被拒，需重拉合同重试。
      * @param id  (required)
-     * @param xOperator 审批操作人，写入 approval 表用于审计留痕。 (required)
+     * @param xOperator 审批操作人，写入 approval 表用于审计留痕。 非 ASCII 姓名须按 UTF-8 百分号编码（HTTP 头只能承载 ISO-8859-1， 浏览器对含中文的头会在发出前直接抛错），Java 侧解码后入库。 (required)
      * @param approveRequest  (required)
      * @return ResponseEntity&lt;ApproveResponse&gt;
      * @throws RestClientException if an error occurs while attempting to invoke the API

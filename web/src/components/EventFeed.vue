@@ -42,7 +42,8 @@ const rows = computed(() =>
       detail = `${event.findings_count} 条发现 · ${event.usage.input_tokens + event.usage.output_tokens} tokens`
       tone = 'good'
     } else if (isInterrupt(event)) {
-      detail = `${event.reason} · ${event.payload?.items?.length ?? 0} 条待审批`
+      // 提交者看到的是「有几条在等人拍板」，不是「我的待办」：措辞不能滑成审批者的口吻。
+      detail = `${event.reason} · ${event.payload?.items?.length ?? 0} 条条款等待法务审批`
       tone = 'warn'
     } else if (isRunFailed(event)) {
       detail = event.message ?? event.code ?? ''

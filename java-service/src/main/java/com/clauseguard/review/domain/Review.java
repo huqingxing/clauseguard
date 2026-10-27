@@ -47,7 +47,7 @@ public class Review {
     /**
      * interrupt 事件的完整 payload JSON（含逐条款待审项 + 基线），供审批回显与基线校验。
      */
-    @Column(name = "pending_payload", columnDefinition = "TEXT")
+    @Column(name = "pending_payload", columnDefinition = "MEDIUMTEXT")
     private String pendingPayload;
 
     @Column(name = "created_at", nullable = false)

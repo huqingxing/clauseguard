@@ -338,6 +338,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminHealth"
+  /api/v1/admin/approvals:
+    get:
+      tags: [admin]
+      summary: 待审批队列（审核者的待办列表）
+      operationId: listAdminApprovals
+      description: >-
+        Stage 5：审批归位到管理端后，审核者需要一个「我该批哪些」的入口。
+        数据全部来自既有 review / contract / review_event 三张表，不建队列表：
+        待审是状态而不是实体，一旦单独存表就会与 review.status 漂移。
+        status 只支持等待审批；不接受其它值（返回 400），避免静默返回空列表让人以为没活儿。
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: >-
+            待审状态。对外名 WAITING_APPROVAL 与内部枚举 AWAITING_APPROVAL 都接受
+            （历史与契约用词不同，两个都认比逼调用方猜一个更稳），默认等待审批。
+          schema:
+            type: string
+            default: WAITING_APPROVAL
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: 按等待时长升序（最久的在最前）。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalQueuePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
 components:
   responses:
     BadRequest:
@@ -700,6 +737,52 @@ components:
             detail:
               type: [object, "null"]
               description: Python /healthz 原始响应；不可达时为 null。
+    ApprovalQueueItem:
+      type: object
+      required: [review_id, contract_id, contract_title, risk_high_count, created_at, waiting_since]
+      properties:
+        review_id:
+          type: string
+          format: uuid
+        contract_id:
+          type: string
+          format: uuid
+        contract_title:
+          type: string
+          description: 合同文件名（合同表里没有单独的标题字段，文件名就是人认得出的那个名字）。
+        risk_high_count:
+          type: integer
+          minimum: 0
+          description: >-
+            待审的高风险条款数（按 clause_id 去重）。同一条款可能被多个专家各报一次，
+            审核者要拍板的是条款，不是风险点。
+        created_at:
+          type: string
+          format: date-time
+          description: 审查发起时间。
+        waiting_since:
+          type: string
+          format: date-time
+          description: >-
+            进入待审批的时间（取 interrupt 事件的 ts）。与 created_at 分开是因为
+            「等了多久」要按进审批算，按发起时间算会把运行耗时也算成审核者的等待。
+    ApprovalQueuePage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalQueueItem"
+        page:
+          type: integer
+          minimum: 0
+        size:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
     Error:
       type: object
       required: [code, message]

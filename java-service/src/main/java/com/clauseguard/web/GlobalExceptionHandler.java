@@ -1,6 +1,7 @@
 package com.clauseguard.web;
 
 import com.clauseguard.agent.AgentUnavailableException;
+import com.clauseguard.admin.InvalidApprovalStatusException;
 import com.clauseguard.api.model.Error;
 import com.clauseguard.contract.ContractNotFoundException;
 import com.clauseguard.contract.ContractUploadException;
@@ -55,5 +56,11 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     public Error handleContractChanged(ContractChangedException ex) {
         return new Error().code("CONTRACT_CHANGED").message(ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidApprovalStatusException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Error handleInvalidApprovalStatus(InvalidApprovalStatusException ex) {
+        return new Error().code("INVALID_APPROVAL_STATUS").message(ex.getMessage());
     }
 }
