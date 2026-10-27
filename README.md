@@ -266,11 +266,13 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
     `PLACEHOLDER_RENDER: reason=source-unavailable`，结果页就只剩一个空产物。本机验收是把
     源 docx 按约定键摆进 `local_dir` 才跑出批注稿的——修法是让 Java 按同一套约定键写入对象
     存储（Python 侧不动），或者让 render 改用透传的 `source.download_url`。
-12. **后端不可用时前端不承认**：列表页把后端/代理给的裸 `HTTP 500` 直接显示出来，并落到
-    「还没有合同」空态（像是「你还没上传」而不是「服务挂了」）；结果页连不上时只显示
-    「重连中（第 N 次）」，没有任何失败说明。不是白屏，但会误导。另外工作台加载时请求
-    `/api/v1/contracts/{id}/diff?target=<当前版本>`，新版本尚未审查时必然 404（前端已
-    try/catch，浏览器仍记一条资源级 error，属既有噪音）。
+12. **后端不可用时提示仍受代理口径影响**：列表页/工作台现在会把失败翻译成人话
+    （`utils/error.ts`），失败时不再冒充「还没有合同」空态；结果页在重连 3 次（约 7 秒）
+    仍收不到事件时明确显示「连不上服务，请确认 java-service 是否在 8080 运行」。
+    剩下的偏差：本机 `vite dev` 的代理把「连不上后端」表现成 `HTTP 500`，所以文案会说
+    「后端出错了」而不是「连不上」；部署到 nginx 后是 502，文案才是「连不上后端服务」。
+    另外「重连 N 次」这个口径只在事件流上成立——已完成的审查断线时页面读的是 REST 快照，
+    不会因为连不上就抹掉已显示的结果。
 13. **用户端接口仍未鉴权，只有 `/api/v1/admin/**` 受保护**：`SecurityConfig` 里除管理端路径外
     一律 `permitAll`，所以上传、发起审查、读结果、审批写入、以及 `/api/v1/eval/summary` 都不需要
     任何凭证——用 `curl` 不带 `-u` 直接打就是 200。管理端那套 BASIC 只是把「运维/成本/审批」这一块
@@ -281,9 +283,9 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
 
 ```bash
 make test-py     # pytest（293 passed）
-make test-java   # mvn test（85 tests，需 JDK ≥ 21）
+make test-java   # mvn test（87 tests，需 JDK ≥ 21）
 cd python-agent && uv run ruff check app tests && uv run mypy app
-make test-web    # node --test（31 passed，需 Node ≥ 22.18：跑 .ts 靠内置类型剥离）
+make test-web    # node --test（36 passed，需 Node ≥ 22.18：跑 .ts 靠内置类型剥离）
 cd web && npm run build   # vue-tsc -b + vite build，类型错误在这一步拦下
 ```
 

@@ -394,11 +394,66 @@ SSE 首屏时序（新建一笔审查，取前 5 条事件）：相对毫秒 `[0
   新版本尚未审查时必然 404；前端 `loadDiff()` 已 try/catch（注释里写明 404 是正常情况），
   浏览器仍记一条资源级 error。warning 全程 0 条。
 
+（这两项当时登记为「既有行为」，阶段 11 之后已修掉并复核，证据见 3.7。）
+
 **跑这两轮时的环境说明（不是代码问题）**：本机没有 Docker daemon 与 MinIO，
 对象存储用一个只实现 PUT/GET 的 S3 替身（127.0.0.1:9000）顶替；批注稿链路还撞到既有缺口——
 Java 上传落 `uploads/{id}-v{n}.docx`，而 Python render 只认 `contracts/{id}/v{n}/source.docx`，
 键约定没接通，默认配置下走 `PLACEHOLDER_RENDER: reason=source-unavailable`。
 本机是把源 docx 按约定键摆进 `local_dir` 才跑出批注稿的（详见 README 已知限制 11）。
+
+### 3.7 阶段 11 之后：把阶段 10 的两项 FAIL 修掉（含复核证据）
+
+阶段 10 的两项 FAIL 都是既有行为，但都落在「用户能不能看懂出了什么事」上，值得修。
+修完重跑同一组断言，结论 **PASS**；阶段 9 的项 1（契约增量不可回退）保持 FAIL 不动。
+
+**修一：失败提示说人话 + 连不上时要承认（`fix(web)`）**
+
+- 新增 `web/src/utils/error.ts`：`describeApiError()` 把状态码翻译成人话。502/503/504 →
+  「连不上后端服务，请确认 java-service 是否在 8080 运行」；5xx → 「后端出错了（HTTP 500）」；
+  401/403/404 各自说清是谁的问题；**后端给了结构化 `{code,message}` 时原话优先**——
+  我们编的文案永远不如后端那一句准（例：`CONTRACT_CHANGED` 会说清是哪个版本变了）。
+  按形状（有没有 `status`/`code` 字段）判断而不是 `instanceof ApiError`，因为
+  `api/http.ts` 的 import 链在 `node --test` 的原生 ESM 下解析不了，测试一 import 就崩。
+- 列表页：失败时不再落到「还没有合同」空态（那句话会让人以为数据丢了、再去传一遍），
+  空态文案改成「列表没能加载出来，按上面的提示处理后点『重试』」，并给了重试按钮。
+- 结果页/工作台：`stores/run.ts` 新增 `offline`（重连 ≥3 次且一条事件都没收到 →
+  `true`），`RunPanel` 据此显示「连不上服务…恢复后本页会自动接上，进度不会丢」。
+  阈值取 3 是算过的：退避 1s→2s→4s，第 3 次失败时约 7 秒；取 1 会把「请求撞上重启」
+  误报成故障，取 5 要等 31 秒，而用户通常在第 10 秒就自己刷新了。
+- 覆盖到的调用点：合同列表、工作台（加载合同 + 发起审查）、原文渲染、管理端四屏
+  （登录卡/概览/队列/评测）。
+
+**修二：未审查版本的 diff 回空账本而不是 404（`fix(api)`）**
+
+`GET /api/v1/contracts/{id}/diff?target=N` 在该版本还没跑过审查时抛 404。但「还没审过」
+是**没有对比数据**，不是**资源不存在**：前端每次切到刚上传的新版本都会收获一条 404，
+报表的人第一眼看到的是「接口坏了」。改法：`ReviewService.contractDiff` 在找不到审查时
+返回空账本（`baseline_version=0`、三个列表为空）；`ContractController` 先调一次
+`contractService.current(id)`，**404 只留给「合同 id 不存在」**。契约不用改——
+`openapi.yaml` 里声明的 404 仍然可达。
+
+**复核证据（真实命令 / 真实 Chrome）**
+
+```
+curl -i .../contracts/{id}/diff?target=4      → 200 {"baseline_version":0,"target_version":4,"changed":[],...}
+curl -i .../contracts/00000000-...-ff/diff?target=2 → 404（合同不存在，404 仍然可达）
+工作台（v4 未审查）  diff 请求确实发出 + 200；console error 0、warning 0、4xx/5xx 0
+
+后端 kill 掉之后：
+列表页   alert「后端出错了（HTTP 500），请稍后重试」+「重试」按钮；
+         空态「列表没能加载出来…」不再冒充「还没有合同」；非白屏
+结果页   11s 后文本含「连不上服务」，重连计数 4；非白屏；0 pageerror
+
+管理端回归（两端都改了错误文案）   未登录只显示登录卡；错口令 401 显示「账号或密码错误」
+                                   且仍停在登录卡；正确口令进管理端（侧栏 3 项），
+                                   概览/评测/待审批三条路由均渲染；除故意触发的那条 401
+                                   资源日志外 0 error
+
+测试   mvn test 87（原 85，+2：空账本与 404 语义）
+       node --test 36（原 31，+5：错误翻译五条断言）
+       npm run build（vue-tsc + vite build）通过
+```
 
 ## 4. 本阶段修掉的三个真实缺陷
 
