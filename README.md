@@ -64,6 +64,23 @@ curl localhost:8000/healthz                     # {"status":"ok","service":"pyth
 cd web && npm install && npm run dev            # 前端 5173（可选）
 ```
 
+### 第一次跑通的自检清单（约 30 分钟，逐条看输出再往下走）
+
+| # | 命令 | 期望输出 | 不对怎么办 |
+| --- | --- | --- | --- |
+| 1 | `java -version` | 21.x | 不是 21 就 `export JAVA_HOME=<jdk-21>`，否则 `mvn` 报 `class file version 65.0` |
+| 2 | `node -v` | ≥ 22.18 | 低版本 `npm run dev` 能起，但 `npm run test:unit` 会在 `.ts` 第一行报语法错 |
+| 3 | `curl localhost:8080/healthz` | `{"status":"ok"}` | 起不来先看「起不来时按顺序核对」表 |
+| 4 | `curl localhost:8000/healthz` | `{"status":"ok","service":"python-agent"}` | 报 502 多半是本机代理，用 `env -u http_proxy -u https_proxy ...` 起 |
+| 5 | `curl -i localhost:8080/api/v1/admin/health` | `401` + `{"code":"UNAUTHORIZED",...}` | 200 说明 SecurityConfig 没生效 |
+| 6 | `curl -u admin:admin123 localhost:8080/api/v1/admin/health` | `200` + `{"java":{"status":"up"},...}` | 401 说明口令不是 `application.yml` 里那一行 |
+| 7 | `cd web && npm run test:unit && npm run build` | 31 测全绿 + `built in` | 类型错误在 `build` 这一步拦下 |
+| 8 | 浏览器开 `http://127.0.0.1:5173` | 合同列表；上传 `deploy/demo/demo-contract.docx` | 见下「界面」小节的路由表 |
+| 9 | 浏览器开 `http://127.0.0.1:5173/admin.html` | 登录卡（不是管理端内容） | 直接进内容说明登录闸门没生效 |
+
+演示合同没有就 `make demo-contract` 生成（Windows 等价命令见上表）。管理端口令是
+`application.yml` 里 `clauseguard.security.users` 的 `admin` 那一行——**上线前必须换**。
+
 ### 界面（web/，两个入口：用户端 3 条路由 + 管理端 4 条路由）
 
 用户端与管理端是**两个独立 HTML 入口**，各自一套导航。产物按入口切分：`index.html` 引
@@ -82,8 +99,9 @@ cd web && npm install && npm run dev            # 前端 5173（可选）
 | `/reviews/:id` | 结果页 | 只读落地页，可分享；`waiting_approval` 时只显示「等待法务审批中」+ 已等待时长 |
 
 审批页不在这里——拍板的是审核者，不是发起审查的提交者，它在管理端（见下）。
-用户端**没有任何审批入口**：没有按钮、没有跳管理端的链接，连「隐藏的入口」都不留
-（旧地址 `/reviews/:id/approve` 由路由兜底回合同列表）。
+用户端**没有任何审批入口**：没有按钮、没有跳管理端的链接，连「隐藏的入口」都不留。
+旧地址 `/reviews/:id/approve` 会落到 404 页（`NotFoundView`）并写明审批已迁到管理端——
+静默回合同列表会被读成「跳错页了」，地址失效必须停住说清楚。
 
 管理端 http://127.0.0.1:5173/admin（生产 `/admin`，产物 `admin.html`），**第一次打开要先登录**：
 
@@ -242,7 +260,18 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
     事件插入失败而状态已是 `COMPLETED`，用户端重放看不到终态、永远停在「等待审批」。
     已用 `V4__widen_event_payload.sql` 把列放宽到 MEDIUMTEXT 消除触发条件，
     但「写事件失败会导致状态与事件不一致」这个结构性问题仍在。
-11. **用户端接口仍未鉴权，只有 `/api/v1/admin/**` 受保护**：`SecurityConfig` 里除管理端路径外
+11. **批注稿链路的源对象键没接通（默认配置下没有「下载批注稿」）**：Java 上传把源 docx
+    落在 `uploads/{id}-v{n}.docx` 并把 `source.object_key` 透传给 Python；Python 的 render
+    只按 `contracts/{id}/v{n}/source.docx` 去对象存储取源。两边键约定没对上，render 走
+    `PLACEHOLDER_RENDER: reason=source-unavailable`，结果页就只剩一个空产物。本机验收是把
+    源 docx 按约定键摆进 `local_dir` 才跑出批注稿的——修法是让 Java 按同一套约定键写入对象
+    存储（Python 侧不动），或者让 render 改用透传的 `source.download_url`。
+12. **后端不可用时前端不承认**：列表页把后端/代理给的裸 `HTTP 500` 直接显示出来，并落到
+    「还没有合同」空态（像是「你还没上传」而不是「服务挂了」）；结果页连不上时只显示
+    「重连中（第 N 次）」，没有任何失败说明。不是白屏，但会误导。另外工作台加载时请求
+    `/api/v1/contracts/{id}/diff?target=<当前版本>`，新版本尚未审查时必然 404（前端已
+    try/catch，浏览器仍记一条资源级 error，属既有噪音）。
+13. **用户端接口仍未鉴权，只有 `/api/v1/admin/**` 受保护**：`SecurityConfig` 里除管理端路径外
     一律 `permitAll`，所以上传、发起审查、读结果、审批写入、以及 `/api/v1/eval/summary` 都不需要
     任何凭证——用 `curl` 不带 `-u` 直接打就是 200。管理端那套 BASIC 只是把「运维/成本/审批」这一块
     关起来，**不是**给整个 API 上的门。任何「用户端看着没有入口」的结论都不等于「接口调不到」，
