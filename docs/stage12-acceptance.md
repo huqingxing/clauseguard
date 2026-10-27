@@ -8,6 +8,8 @@
 - 环境：Windows 11 / Node 20 / Chrome（headless）/ JDK 21 / Python 3.13
 - 运行形态：web 5173（vite dev）· java 8080（`--clauseguard.event-store=in-memory`）·
   python 8000（`CLAUSEGUARD_AGENT_MODEL_BACKEND=mock`）· MySQL 8（本机 3306）
+  - **注**：那时本机 6379 上是不支持 Streams 的 Redis 3.2，只能用 in-memory 降级跑；
+    现在已切回默认的 Redis Stream（redis-stack 7.4），in-memory **仅作故障降级**，见 3.8。
 
 ## 1. 交付内容
 
@@ -455,7 +457,73 @@ curl -i .../contracts/00000000-...-ff/diff?target=2 → 404（合同不存在，
        npm run build（vue-tsc + vite build）通过
 ```
 
+### 3.8 事件存储切回真 Redis Stream（去掉临时降级）
+
+阶段 9–11 一直用 `--clauseguard.event-store=in-memory` 跑验收，那是**降级形态**：
+进程内的 Map 一重启就空，断线续传只能在同一进程生命周期内成立。这一节把它切回默认的
+Redis Stream，并清理降级期间留下的卡死记录。
+
+**根因不是「Redis 版本低」一句话，而是两个进程抢同一个端口**
+
+`netstat -ano | grep :6379` 当时有**两个** LISTENING：PID 41224 是
+`D:\develop\redis\redis-server.exe`（3.2.100，不支持 Streams），PID 27480 是
+`com.docker.backend.exe`（redis-stack 7.4.7 的端口代理）。Windows 上两者都能绑成功，
+而宿主机 `127.0.0.1:6379` 连到的是**先绑的那个 3.2.100**——所以 docker 里的 7.4.7
+看着在跑、`docker exec redis-cli XADD` 也成功，Java 却照样报
+`ERR unknown command 'XRANGE'`。判据必须是「从宿主机执行 `XADD`」，不是 `PING`，
+也不是 `docker exec`：
+
+```
+宿主机（切换前）  redis-cli INFO server -> redis_version:3.2.100
+宿主机（切换前）  redis-cli XADD cg:probe-host '*' from host -> ERR unknown command 'XADD'
+```
+
+处置：`redis-cli SAVE` → 备份 `dump-3.2.100-backup-20261027.rdb`（23KB）→
+`taskkill /PID 41224`（它是普通进程，不是 Windows 服务，`Get-Service` 里没有 redis 项，
+所以不需要 `Set-Service -StartupType Manual`）→ 6379 只剩 docker 的端口代理：
+
+```
+宿主机（切换后）  redis-cli INFO server -> redis_version:7.4.7
+宿主机（切换后）  XADD -> 1793110183535-0 ; XLEN -> 1 ; XRANGE -> 1793110183535-0 from host
+```
+
+本机走的是**备选路径**（`docker run --name redis-stack-server ... redis/redis-stack-server:latest`），
+不是 `docker compose up -d redis`：compose 里定义的 `redis:7` 会与已占用的 6379 冲突。
+两者对 Streams 能力等价（`redis:7` 原生支持，redis-stack 只是多了模块），CI/他人环境
+按 compose 起即可。
+
+**清理 6 条卡死的 RUNNING**
+
+降级期间每笔审查都卡在 `status=RUNNING`（事件写进进程内存，进程一停就没了，永远等不到终态）。
+清理脚本放 `deploy/sql/cleanup-stale-running.sql`，**故意不是 Flyway migration**——
+判据「RUNNING 且超过 30 分钟」只对本机成立，写进 migration 会误伤别人环境里真在跑的大合同。
+
+```
+执行前  COMPLETED 22 | RUNNING 6 | AWAITING_APPROVAL 16   共 44
+        6 条 RUNNING 的 age 分别为 1244/758/497/496/495/493 分钟（全部 > 30 分钟阈值）
+执行后  COMPLETED 22 | AWAITING_APPROVAL 16 | FAILED 6    共 44   （UPDATE，不是 DELETE）
+```
+
+**验收（Java 不带任何 event-store 参数启动，即默认 redis）**
+
+| 项 | 命令 | 实际输出 | 结论 |
+| --- | --- | --- | --- |
+| Streams 可用 | 宿主机 `XADD/XLEN/XRANGE` | `XADD -> 1793110183535-0`；`XLEN -> 1`；`XRANGE -> ... from host` | PASS |
+| 默认配置健康 | `curl -u admin:<yml 口令> /api/v1/admin/health` | `200` + `{"java":{"status":"up"},"python":{"status":"up","detail":{"status":"ok","service":"python-agent"}}}` | PASS |
+| 完整审查事件流 | `GET /reviews/{id}/stream?since=0` | **53 条**，seq `1..53` 连续；`node.started` 13 个，含 commercial/subject/liability/ip/data/compliance 六个专家 + ingest/diff/dispatch/critic/cache_store/human_approval/render；`interrupt` 1 条（`high_risk_pending_approval`，2 个风险点同属 `#0005`） | 完整性 PASS / **总数未达 100** |
+| 断线续传 | 读到第 25 条 `client-abort`，再 `?since=25` | 收到 24 条，seq `26..49`；重复 `无`；连续递增 `True`；期望 26..49 全在 `True` | PASS |
+| 审批后终态 | `POST /approve` → 轮询状态 | `202`/`200 accepted` → **3 秒** `status=completed`；`findings total=23`（含 `high` 的 `#0005`） | PASS |
+| 跨进程续传（in-memory 做不到的） | 停 Java → 重启 → `?since=0` | Redis `XLEN=53` 不变；重启后回放 **53 条**，`seq 1..53`；状态仍 `completed` | PASS |
+| 状态不再卡住 | `SELECT status,COUNT(*) FROM review GROUP BY status` | `COMPLETED 23 / AWAITING_APPROVAL 16 / FAILED 6`，**RUNNING 0** | PASS |
+
+**「事件总数 ≥100」没达到，原因不是丢事件**：53 条是 Java 侧当前的发射粒度——
+每个节点 `node.started`/`node.finished` 各一条，加上 `message.delta` 24 条（mock 后端
+返回定长文本，分片固定）。换成 `CLAUSEGUARD_AGENT_MODEL_BACKEND=live` + qwen-plus 流式后，
+delta 按 token 切片会显著增加，同样的审查会超过 100。这条按字面判 FAIL，不改成「近似通过」；
+可复核的事实是 seq 无空洞、六专家齐全、终态事件 `run.completed` 到达。
+
 ## 4. 本阶段修掉的三个真实缺陷
+
 
 ### 4.1 中文审批人导致审批请求发不出去（前端 + Java，已在契约里补一句说明）
 

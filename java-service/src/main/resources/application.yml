@@ -46,7 +46,8 @@ clauseguard:
     # 下游 SSE 调用整体超时；超时才触发熔断计数
     connect-timeout: 5s
     response-timeout: 30s
-  # 事件重放存储实现：redis（默认）| in-memory（本地无 Redis 时）
+  # 事件重放存储实现：redis（默认，需 Redis ≥ 5.0 的 Streams）| in-memory（仅故障降级用：
+  # 进程内 Map，重启即丢，断线续传失效，不要写进任何启动脚本当默认）
   event-store: redis
   # 管理端账号：演示用，生产必须换（换成外部用户源或至少换成 BCrypt hash + 密钥管理）。
   # 密码在启动时用 BCrypt 编码后才进内存，配置里保留明文只是为了让本机能直接 curl 验证。

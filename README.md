@@ -40,6 +40,13 @@
 需要：JDK 21、Node 22（`web/package.json` 的 `engines` 要求 ≥ 22.18：`node --test` 跑 `.ts`
 靠内置类型剥离，低版本直接报语法错）、Python 3.12 + uv、Docker、GNU make（Windows 可 `choco install make`）。
 
+**Redis 必须是 ≥ 5.0（compose 用 7.x）**：事件重放依赖 Redis Streams（`XADD`/`XRANGE`），
+4.0 以下没有这组命令，SSE 端点会直接 500。本机若还装着 `D:\develop\redis` 那种 3.2 的
+Windows 版，它会抢在 6379 上、让 docker 的 redis 连不上——先用
+`redis-cli INFO server | grep redis_version` 确认端口后面到底是谁。
+本机 Redis 版本过低时可临时用 `--clauseguard.event-store=in-memory` 降级，但**重启后历史事件不保留、
+断线续传失效**，只能用来排障，不能当默认。
+
 ```bash
 cp .env.example .env && make up                 # 1. 基础设施：mysql/postgres/redis/minio
 make run-py MODEL_BACKEND=mock                  # 2. 编排层（无密钥也能跑；真实模型见下）
@@ -165,7 +172,8 @@ CLAUSEGUARD_AGENT_LLM_API_KEY=sk-...            # 只走环境变量，绝不入
 | `Access denied for user 'clauseguard'@'localhost'` | 库里没有这个账号（Flyway 建表，但不建库/账号） | 用管理员账号建库与账号，见下方 SQL |
 | `Unsupported Database: MySQL 8.0` | Flyway 10+ 把 MySQL 方言拆成独立模块 | 需要 `flyway-mysql`（pom 已含，勿删） |
 | `Tomcat initialized with port 49277` | 宿主进程注入了 `SERVER__PORT` 之类环境变量 | `env -u SERVER__PORT mvn spring-boot:run` |
-| 事件流 500 / `RedisSystemException` | 本机 Redis < 5.0，不支持 Stream | 升级 Redis，或用 `--clauseguard.event-store=in-memory` 本地跑 |
+| 事件流 500 / `RedisSystemException` | 本机 Redis < 5.0，不支持 Stream | 升级 Redis（见下方 `ERR unknown command 'XRANGE'`） |
+| `ERR unknown command 'XRANGE'`（SSE 端点是 500） | 6379 端口后面是 Redis 4.x/3.x（常见于 Windows 版 `D:\develop\redis`），它抢在 docker 之前监听同一端口 | `redis-cli INFO server` 看版本；停掉旧实例（`Stop-Process` 或 `Stop-Service` 并设 `StartupType Manual`）后改用 `redis-stack-server`；用 `XADD`/`XLEN`/`XRANGE` 而不是 `PING` 探活。**临时**降级可加 `--clauseguard.event-store=in-memory`，但断线续传失效，仅限排障 |
 
 建库（一次性，`<admin>` 换成你的 MySQL 管理员）：
 
