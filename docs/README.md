@@ -10,6 +10,7 @@
 | [0002](ADR-0002-parallel-topology.md) | 并行拓扑 | 专家×分片用 LangGraph `Send` fan-out，纯函数 reducer 收敛，P95 −70.2% |
 | [0003](ADR-0003-citation-whitelist.md) | 引用白名单 | 三道闸强制引用来自检索结果；丢空则降级 `unverified` 而非删除结论 |
 | [0004](ADR-0004-interrupt-resume.md) | 中断恢复 | 审批断点在图内 + Postgres checkpoint + 独立 resume 端点，seq 不写图状态 |
+| [0005](ADR-0005-role-split-and-admin-hash.md) | 按角色拆两端 | 用户端=提交者 / 管理端=审核者；hash 路由只为省服务端回退；用户端接口「暂不」鉴权是登记的取舍而非漏配 |
 
 ## 阶段验收报告
 
@@ -27,7 +28,8 @@
 | 文件 | 用途 |
 | --- | --- |
 | [benchmark.md](benchmark.md) | 20 并发 5 分钟压测：P50/P95/P99、错误率、平均成本 |
-| [demo-script.md](demo-script.md) | 90 秒演示分镜 + 旁白（逐秒可照读） |
+| [demo.md](demo.md) | 90 秒界面演示：上传 → 并行点亮 → 风险清单 → 切管理端审批 → 回用户端下载（含实测秒数与旁白） |
+| [demo-script.md](demo-script.md) | 90 秒终端版演示分镜 + 旁白（逐秒可照读） |
 | [talk-outline.md](talk-outline.md) | 3 分钟技术讲解提纲：架构 / 难点 / 数据 |
 
 ## 评测
