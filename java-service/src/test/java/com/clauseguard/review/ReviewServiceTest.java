@@ -438,6 +438,24 @@ class ReviewServiceTest {
         assertThat(diff.getStaleFindings()).isEqualTo(1);
     }
 
+    @Test
+    void contractDiffReturnsEmptyLedgerWhenVersionNeverReviewed() {
+        // 刚上传的新版本还没跑过审查：这是「没有对比数据」而不是「资源不存在」。
+        // 回 404 会让前端每切一次新版本就在控制台留一条红色错误（阶段 10 实测到的噪音）。
+        when(reviewRepository.findFirstByContractIdAndVersionOrderByCreatedAtDesc(
+                "00000000-0000-0000-0000-0000000000a1", 3))
+                .thenReturn(Optional.empty());
+
+        ContractDiff diff = service.contractDiff("00000000-0000-0000-0000-0000000000a1", 3);
+
+        assertThat(diff.getTargetVersion()).isEqualTo(3);
+        assertThat(diff.getBaselineVersion()).isZero();
+        assertThat(diff.getChanged()).isEmpty();
+        assertThat(diff.getAdded()).isEmpty();
+        assertThat(diff.getRemoved()).isEmpty();
+        assertThat(diff.getStaleFindings()).isZero();
+    }
+
     private void givenReviewWithCompleted(String reviewId, int version) {
         Review review = new Review();
         review.setId(reviewId);

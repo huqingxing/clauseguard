@@ -129,6 +129,17 @@ class ContractControllerTest {
     }
 
     @Test
+    void diffReturns404WhenContractUnknown() throws Exception {
+        // diff 的 404 只留给「合同不存在」；版本没审过已经是空账本（200），
+        // 这条测试钉住的是前者，免得以后有人再把空账本改回 404。
+        when(contractService.current("00000000-0000-0000-0000-0000000000ff"))
+                .thenThrow(new ContractNotFoundException("00000000-0000-0000-0000-0000000000ff"));
+
+        mockMvc.perform(get("/api/v1/contracts/00000000-0000-0000-0000-0000000000ff/diff").param("target", "2"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void contentReturns404WhenContractUnknown() throws Exception {
         when(contractService.current("00000000-0000-0000-0000-0000000000ff"))
                 .thenThrow(new ContractNotFoundException("00000000-0000-0000-0000-0000000000ff"));

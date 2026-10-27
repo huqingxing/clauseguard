@@ -547,13 +547,24 @@ public class ReviewService {
      * Python diff 是单一事实源，Java 不重新计算条款差异。
      */
     public ContractDiff contractDiff(String contractId, Integer targetVersion) {
-        Review review = targetVersion == null
+        Optional<Review> found = targetVersion == null
                 ? reviewRepository.findFirstByContractIdOrderByCreatedAtDesc(contractId)
-                        .orElseThrow(() -> new ReviewNotFoundException(contractId))
-                : reviewRepository.findFirstByContractIdAndVersionOrderByCreatedAtDesc(contractId, targetVersion)
-                        .orElseThrow(() -> new ReviewNotFoundException(contractId + " v" + targetVersion));
+                : reviewRepository.findFirstByContractIdAndVersionOrderByCreatedAtDesc(contractId, targetVersion);
         ContractDiff diff = new ContractDiff();
         diff.setContractId(UUID.fromString(contractId));
+        if (found.isEmpty()) {
+            // 「这个版本还没审过」不是「资源不存在」：真相是账本为空。
+            // 之前这里抛 404，前端每次切到刚上传、还没跑过审查的新版本都会往控制台打一条红色错误，
+            // 报障的人第一眼看到的是「接口坏了」。合同本身不存在才该 404（由 Controller 先验一次）。
+            diff.setTargetVersion(targetVersion == null ? 0 : targetVersion);
+            diff.setBaselineVersion(0);
+            diff.setChanged(List.of());
+            diff.setAdded(List.of());
+            diff.setRemoved(List.of());
+            diff.setStaleFindings(0);
+            return diff;
+        }
+        Review review = found.get();
         diff.setTargetVersion(review.getVersion());
         JsonNode incremental = latestCompletedPayload(review.getId())
                 .map(payload -> payload.path("incremental"))

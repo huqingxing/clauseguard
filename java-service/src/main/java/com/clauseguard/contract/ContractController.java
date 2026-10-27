@@ -132,6 +132,9 @@ public class ContractController {
     public ContractDiff diff(
             @PathVariable("id") String id,
             @RequestParam(value = "target", required = false) Integer targetVersion) {
+        // 先确认合同存在：id 写错要报 404。至于「某个版本还没审过」，那是空账本而不是错误，
+        // 由 ReviewService 返回空 diff——否则前端每切一个未审查的新版本就收获一条 404。
+        contractService.current(id);
         return reviewService.contractDiff(id, targetVersion);
     }
 
