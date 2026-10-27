@@ -25,7 +25,8 @@
 | `/reviews/:id` | 审查结果 | 只读落地页，可分享给同事；批注稿下载；等待审批时只显示「等待法务审批中」 |
 
 用户端不再有审批路由：`/reviews/:id/approve` 已迁到管理端 `#/approvals/:id`（阶段 5），
-旧链接由 catch-all 兜回 `/`。用户端没有任何指向 `/admin`、`/eval` 的链接，也没有「隐藏入口」。
+旧链接由 catch-all 落到 **404 页**（阶段 9 改的：原先静默回 `/`，会被读成「跳错页了」，
+现在 404 页直接写明审批已迁到管理端）。用户端没有任何指向 `/admin`、`/eval` 的链接，也没有「隐藏入口」。
 
 管理端 `admin.html`（`/admin`，**hash 路由**，阶段 4 起是真的 router）：
 
@@ -175,7 +176,7 @@ Java 从 61 增至 63：新增 `approveDecodesPercentEncodedOperator` 与
 /                                            渲染出 "ClauseGuard / 合同风险审查 / 上传合同"
 /contracts/{id}                              三栏渲染，DOCX 原文可见（正文含「技术开发合作协议」）
 /reviews/{id}                                结果页可渲染；awaiting_approval 时显示「等待法务审批中」
-/reviews/{id}/approve                        已删除 → catch-all 回 /（用户端不再有审批路由）
+/reviews/{id}/approve                        已删除 → 404 页（用户端不再有审批路由；阶段 9 起不再静默回 /）
 ```
 
 管理端（`/admin`、`/admin/`、`/admin.html` 三种写法都落到同一入口，且**先过登录卡**）：
@@ -341,6 +342,63 @@ CI 的 `actions/checkout` 本来就只给源码。）
 `web/package.json` 加了 `engines.node >= 22.18`，写进 `package-lock.json` 的根节点；
 低于这个版本 `node --test` 不再默认剥离 `.ts` 类型，会在第一行报语法错——与其让人猜，不如让
 `npm install` 直接给出警告。
+
+### 3.6 阶段 9（16 项逐项验收）与阶段 10（10 项回归自查）
+
+上面 ①–⑤ 是阶段 3–8 各自的验收。阶段 9 把它汇总成 16 项逐条判 PASS/FAIL/BLOCKED，
+阶段 10 再按「有没有破坏原有能力」回归一遍。结论：**阶段 9 15 PASS / 1 FAIL，
+阶段 10 8 PASS / 2 FAIL，无 BLOCKED**。两项 FAIL 都不是阶段 3–8 引入的回归，已登记进
+README 已知限制。
+
+**阶段 9 · 端到端（11/11，真实 Chrome + 真实 8080 鉴权）**
+
+```
+上传 → 工作台 → awaiting_approval → 管理端队列可见 → 审批详情 3 个选项
+→ 提交受理 → completed → 发现 23 条（高危 2）→ 下载 annotated.docx 39855B
+python-docx 重开：OPEN OK（30 段，word/comments.xml 含 23 组 commentRangeStart/Reference）
+全程 console error 0、pageerror 0
+```
+
+SSE 首屏时序（新建一笔审查，取前 5 条事件）：相对毫秒 `[0.02, 0.08, 0.10, 0.12, 0.13]`，
+相邻间隔 `[0.06, 0.02, 0.02, 0.01, 0.01]`，最大 0.06ms —— 远低于 200ms 的门槛，
+证明事件是逐条到达而不是攒批下发。
+
+产物隔离（按 `index.html` 可达 chunk 集合，不是只 grep 入口文件）：
+用户端可达 11 个 chunk，关键字 `api/v1/admin|api/v1/eval|运维健康|评测看板|待审批` **0 命中**；
+同一脚本跑 `admin.html` 可达集合命中 17 次（对照成立，说明 grep 有效）。
+
+**阶段 9 · 唯一 FAIL**：`git diff --stat 011579f -- python-agent/ contracts/` 非空——
+`python-agent/` 是空的（铁律守住），非空的是 `contracts/openapi.yaml +95`：阶段 5 的
+`/api/v1/admin/approvals` 与阶段 7 的 `since`/`Last-Event-ID`。这两处是**新接口与新参数的
+契约**，删掉等于让契约与实现不一致，因此判定为「不可回退的增量」而不是去改代码凑绿。
+
+**阶段 10 · 回归 8 项 PASS 的关键数字**
+
+```
+主链路      6 个 review.* 节点各 1 次 node.started/finished，run.completed findings=23
+断线续传    审查中途 reload → 继续收到终态；结果页 23 == API 23（没翻倍）；
+            ?since=3 重连首条 seq=4，dup=[] holes=[]
+断点续跑    53 条事件按 node 统计 started 次数全为 1；python 日志 resume 后无第二次 ingest/dispatch
+增量重审    v2（改 1 条 + 新增 1 条）：changed=3 / unchanged=13 / reused=20 / cache_hit_rate=1.00；
+            token 11960 → 2600（省 9360）；dispatch 分片 6 → 4
+375px       列表 18 行可点、工作台三栏可渲染、结果页 23 张发现卡片 == API 23，scrollWidth 均 375
+```
+
+**阶段 10 · 两项 FAIL（都不是本次引入）**
+
+- **后端挂掉时前端不承认**：真 kill 掉 java 后，列表页有 el-alert 但文案是裸 `HTTP 500`
+  （vite 代理给的），并落到「还没有合同」空态；结果页停在「排队中 / 重连中（第 3 次）」，
+  没有失败说明。两页都不是白屏，但会误导。
+  `ContractListView.vue` 与 `stores/run.ts` 相对基线 **0 改动** → 既有行为。
+- **console 有一条既有 404 噪音**：工作台加载时请求 `/api/v1/contracts/{id}/diff?target=<当前版本>`，
+  新版本尚未审查时必然 404；前端 `loadDiff()` 已 try/catch（注释里写明 404 是正常情况），
+  浏览器仍记一条资源级 error。warning 全程 0 条。
+
+**跑这两轮时的环境说明（不是代码问题）**：本机没有 Docker daemon 与 MinIO，
+对象存储用一个只实现 PUT/GET 的 S3 替身（127.0.0.1:9000）顶替；批注稿链路还撞到既有缺口——
+Java 上传落 `uploads/{id}-v{n}.docx`，而 Python render 只认 `contracts/{id}/v{n}/source.docx`，
+键约定没接通，默认配置下走 `PLACEHOLDER_RENDER: reason=source-unavailable`。
+本机是把源 docx 按约定键摆进 `local_dir` 才跑出批注稿的（详见 README 已知限制 11）。
 
 ## 4. 本阶段修掉的三个真实缺陷
 
