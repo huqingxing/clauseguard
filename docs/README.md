@@ -18,6 +18,7 @@
 | 9 | 中断恢复与事件续接 | [stage9-acceptance.md](stage9-acceptance.md) |
 | 10 | 带批注 Word 回写 | [stage10-acceptance.md](stage10-acceptance.md) |
 | 11 | 增量重审与缓存（token −95%） | [stage11-acceptance.md](stage11-acceptance.md) |
+| 12 | 前端工作台（6 路由 / 三栏 / 375px 审批页） | [stage12-acceptance.md](stage12-acceptance.md) |
 | 13 | 评测与回归（120 份 / 466 标注） | [stage13-acceptance.md](stage13-acceptance.md) |
 | 14 | 可观测性与交付物 | [stage14-acceptance.md](stage14-acceptance.md) |
 

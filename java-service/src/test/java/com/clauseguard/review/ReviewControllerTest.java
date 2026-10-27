@@ -3,6 +3,7 @@ package com.clauseguard.review;
 import com.clauseguard.api.model.ApproveResponse;
 import com.clauseguard.api.model.ReviewCreateResponse;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -14,9 +15,11 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -113,5 +116,35 @@ class ReviewControllerTest {
                         .content("[{\"clause_id\":\"c1\",\"decision\":\"approve\","
                                 + "\"contract_version\":\"1\",\"content_hash\":\"h1\"}]"))
                 .andExpect(status().isNotFound());
+    }
+
+    /**
+     * 中文审批人：HTTP 头只能装 ISO-8859-1，前端按 UTF-8 百分号编码后放入头，
+     * 服务端必须还原成「张三」再落库，否则审计记录里会是一串 %E5%BC%A0。
+     */
+    @Test
+    void approveDecodesPercentEncodedOperator() throws Exception {
+        when(reviewService.approveReview(any(), any(), any()))
+                .thenReturn(new ApproveResponse()
+                        .status(ApproveResponse.StatusEnum.ACCEPTED)
+                        .decidedAt(OffsetDateTime.parse("2026-10-23T10:00:00Z")));
+
+        mockMvc.perform(post("/api/v1/reviews/00000000-0000-0000-0000-0000000000e4/approve")
+                        .header("X-Operator", "%E5%BC%A0%E4%B8%89")
+                        .contentType("application/json")
+                        .content("[{\"clause_id\":\"c1\",\"decision\":\"approve\","
+                                + "\"contract_version\":\"1\",\"content_hash\":\"h1\"}]"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<String> operator = ArgumentCaptor.forClass(String.class);
+        verify(reviewService).approveReview(any(), any(), operator.capture());
+        assertEquals("张三", operator.getValue());
+    }
+
+    /** 纯 ASCII 与「名字里带 %」都不该被误解码：前者的原值是语义，后者是非法序列。 */
+    @Test
+    void decodeOperatorKeepsAsciiAndMalformedInput() {
+        assertEquals("alice", ReviewController.decodeOperator("alice"));
+        assertEquals("100%", ReviewController.decodeOperator("100%"));
     }
 }

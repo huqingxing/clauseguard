@@ -24,7 +24,7 @@
 |---|---|
 | Java | JDK 21 / Spring Boot 3.5.x / spring-ai-alibaba 1.1.2.0 / spring-ai 1.1.2 / flyway-core + flyway-mysql（版本由 BOM 托管；Flyway 10+ 把 MySQL 方言拆成独立模块，缺 flyway-mysql 会报 `Unsupported Database: MySQL 8.0`） |
 | Python | 3.12 / fastapi>=0.115 / pydantic>=2.8 / langchain>=1.0,<2 / langgraph>=1.0,<2 / langgraph-checkpoint-postgres / psycopg[binary,pool] / PyMuPDF / python-docx / lxml |
-| 前端 | Node 20 / Vue 3.5 / Vite 6 / TypeScript / Pinia / Element Plus |
+| 前端 | Node 20 / Vue 3.5 / Vite 6 / TypeScript / Pinia / Element Plus / vue-router 4.6（Stage 12 新增）/ docx-preview 0.4（Stage 12 新增，左栏 DOCX 渲染；PDF 走浏览器原生 iframe，不引 pdfjs） |
 | 基础设施 | MySQL 8.4 / PostgreSQL 16 + pgvector / Redis 7 / MinIO |
 | 可观测性（Stage 14） | Python: opentelemetry-sdk / -exporter-otlp-proto-http 1.27–2；Java: micrometer-tracing-bridge-otel + opentelemetry-exporter-otlp（版本由 Spring Boot 3.5 BOM 托管，不自选） |
 
@@ -33,6 +33,8 @@
 版本表只允许「为完成当前阶段任务而新增一项，并同步登记到本表」；不允许顺手升级既有条目。
 Stage 14 新增可观测性栈（OTel）即按此规则登记——任务书要求 OTLP → Langfuse，
 而链路追踪无法在手写 `traceparent` 上实现父子 span。
+Stage 12 新增 `vue-router` 与 `docx-preview` 同理：6 条路由无法用手写 hash 分发维护，
+DOCX 浏览器不能原生渲染（PDF 用 `<iframe>` 即可，故没有引 pdfjs）。
 
 ## 端口与库名
 

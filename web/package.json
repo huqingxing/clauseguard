@@ -9,9 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.5.0",
+    "docx-preview": "^0.4.1",
+    "element-plus": "^2.8.0",
     "pinia": "^2.2.0",
-    "element-plus": "^2.8.0"
+    "vue": "^3.5.0",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.1.0",

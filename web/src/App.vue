@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// Stage 11：审查控制台（发起审查 + 变更条款高亮 + 仅重审变更 + 运行摘要）。
-import ReviewConsole from './components/ReviewConsole.vue'
+// Stage 12：外壳（导航）+ 路由视图。页面级内容都在 views/ 下。
+import AppShell from './components/AppShell.vue'
 </script>
 
 <template>
-  <ReviewConsole />
+  <AppShell />
 </template>

@@ -6,7 +6,7 @@
  * 宁可少字段也不加 schema 里没有的字段（铁律 3：禁止私加字段）。
  */
 
-export type ReviewMode = 'full' | 'incremental'
+import type { Finding, ReviewMode } from './api'
 
 export type ClauseChangeStatus = 'changed' | 'added' | 'removed' | 'unchanged'
 
@@ -53,6 +53,8 @@ export interface RunCompletedEvent {
   type: 'run.completed'
   usage: Usage
   findings_count: number
+  /** Stage 12：明细随事件下发（已剔除 stale），工作台据此直接渲染，免去再拉一次 REST。 */
+  findings?: Finding[]
   degraded?: boolean
   quality: Quality
   artifact?: Artifact | null
@@ -106,6 +108,34 @@ export type AgentStreamEvent =
   | NodeEvent
   | MessageDeltaEvent
   | { seq: number; ts: string; type: string }
+
+/**
+ * 类型守卫：联合里有 `{ type: string }` 兜底成员，直接比较 type 无法把类型收窄到具体事件，
+ * 只剩 `as` 一条路。集中在这里做一次断言，避免每个消费点各自 `as`（漂移风险更高）。
+ */
+export function isRunCompleted(event: AgentStreamEvent): event is RunCompletedEvent {
+  return event.type === 'run.completed'
+}
+
+export function isInterrupt(event: AgentStreamEvent): event is InterruptEvent {
+  return event.type === 'interrupt'
+}
+
+export function isNodeEvent(event: AgentStreamEvent): event is NodeEvent {
+  return event.type === 'node.started' || event.type === 'node.finished' || event.type === 'node.failed'
+}
+
+export interface RunFailedEvent {
+  seq: number
+  ts: string
+  type: 'run.failed'
+  code?: string
+  message?: string
+}
+
+export function isRunFailed(event: AgentStreamEvent): event is RunFailedEvent {
+  return event.type === 'run.failed'
+}
 
 export interface ClauseRow {
   clause_id: string

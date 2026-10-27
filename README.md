@@ -63,6 +63,22 @@ curl localhost:8000/healthz                     # {"status":"ok","service":"pyth
 cd web && npm install && npm run dev            # 前端 5173（可选）
 ```
 
+### 界面（web/，6 条路由）
+
+打开 http://127.0.0.1:5173 后按下面的顺序走一遍，就是完整的一次审查：
+
+| 路由 | 页面 | 做什么 |
+| --- | --- | --- |
+| `/` | 合同列表 | 上传 `deploy/demo/demo-contract.docx`（没有就 `make demo-contract` 生成） |
+| `/contracts/:id` | 工作台 | 三栏：左原文 / 中风险发现 / 右运行态；点「全量审查」 |
+| `/reviews/:id/approve` | 审批页 | 375px 优先；高风险条款逐条 通过/驳回/改措辞 |
+| `/reviews/:id` | 结果页 | 只读落地页，可分享；审批后续跑完成看结果 |
+| `/eval` | 评测看板 | token / 成本 / 校验通过率 / 增量收益 |
+| `/admin` | 运维健康 | Java + Python 双栈状态，10 秒轮询 |
+
+演示合同第五条（违约金不设上限）会同时触发两个专家，因此审批页会显示
+**1 条条款 / 2 个风险点**——审批按条款拍板，不是按风险点。
+
 接真实模型（去掉 mock 即可，无需改代码）：
 
 ```bash
@@ -106,7 +122,7 @@ GRANT ALL PRIVILEGES ON clauseguard.* TO 'clauseguard'@'localhost';
 | `contracts/` | `openapi.yaml`（对外 API）+ `events.schema.json`（跨服务事件，`additionalProperties=false`）+ 代码生成脚本 |
 | `java-service/` | Spring Boot 3.5 / JDK 21，包 `com.clauseguard`：contract / review / eval / admin / events / mcp / observability |
 | `python-agent/` | Python 3.12 + uv，包 `app`：graph（节点与拓扑）/ agents（6 专家）/ tools / prompts（版本化）/ parse / render / incremental / observability |
-| `web/` | Vue3 + Vite + TS + Pinia + Element Plus（只连 Java） |
+| `web/` | Vue3 + Vite + TS + Pinia + vue-router + Element Plus；6 条路由、三栏工作台、375px 审批页（只连 Java） |
 | `deploy/` | docker-compose、nginx、`otel/`（OTLP 采集器 + 链路验证）、`locust/`（压测）、`demo/`（演示合同生成） |
 | `eval/` | 评测数据集生成、runner、指标、报告（`eval/README.md`） |
 | `docs/` | ADR、阶段验收报告、压测报告、演示脚本（`docs/README.md`） |
@@ -156,18 +172,22 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
 2. **评测 examiner 是确定性替身**：100% 召回证明的是链路无损耗，不是模型能力；换真模型只需换
    `build_eval_agent_factory` 里的模型。
 3. **条款定位 IoU 恒 1.0**：合成语料里一条款=一句，切分后 span 恰等于标注 span，区分度有限。
-4. **Web 工作台未完成**：Stage 12 的 6 条路由 / 三栏工作台 / SSE 断线重连 / 375px 审批页仍是
-   待办（后端接口已就绪并测试通过）。
-5. **压测跑在 mock 后端**：数值反映编排层（下载/切分/6 专家 fan-out/critic/回写），
+4. **同一合同同版本的第二笔审查会串状态**：`thread_id` 取 `contract_id:version`，两笔审查
+   共享同一个 LangGraph checkpoint，第二笔的 `findings` 会累加并出现一批 `unverified`
+   （实测 23 → 46）。单笔隔离跑是干净的。属 Stage 9 设计遗留，修法见
+   [docs/stage12-acceptance.md](docs/stage12-acceptance.md) 5.1。
+5. **没有认证**：审批的 `X-Operator` 是署名不是身份，任何人填名字都能审批；对内演示可用，
+   对外必须先接认证。
+6. **压测跑在 mock 后端**：数值反映编排层（下载/切分/6 专家 fan-out/critic/回写），
    不含真实供应商的模型时延与限流。
-6. **Python 侧 resume 是同一条 trace 的第二段根 span**（不是同一个 span 的延续），
+7. **Python 侧 resume 是同一条 trace 的第二段根 span**（不是同一个 span 的延续），
    Langfuse 里会显示为两段，用 `clauseguard.resumed` 区分。
 
 ## 测试与门禁
 
 ```bash
 make test-py     # pytest（293 passed）
-make test-java   # mvn test（61 tests，需 JDK ≥ 21）
+make test-java   # mvn test（63 tests，需 JDK ≥ 21）
 cd python-agent && uv run ruff check app tests && uv run mypy app
 cd web && npm run build
 ```
