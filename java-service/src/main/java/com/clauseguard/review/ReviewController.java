@@ -109,11 +109,34 @@ public class ReviewController {
     @GetMapping("/{id}/stream")
     public SseEmitter stream(
             @PathVariable("id") String id,
+            @RequestParam(value = "since", required = false) Long since,
             @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
         // 下游熔断打开：直接返回 503，前端可重试（同时事件流本身会补 run.failed）。
         if (reviewService.isAgentUnavailable()) {
             throw new com.clauseguard.agent.AgentUnavailableException("python agent circuit is open");
         }
-        return reviewService.stream(id, lastEventId);
+        return reviewService.stream(id, resumeAfter(since, lastEventId));
+    }
+
+    /**
+     * 断点从哪续：query `since` 优先，其次 `Last-Event-ID`，都没有就从头回放（-1）。
+     *
+     * <p>为什么两条通道都要：浏览器原生 EventSource 自动重连会带 Last-Event-ID，但前端为了
+     * 控制退避与状态提示是自己 new EventSource 的，新实例不继承这个头，只能把 lastSeq 放进 URL。
+     * 两种输入必须在这里折成同一个 afterSeq——分头解析就会长出两套「我看到第几条」的语义。
+     */
+    static long resumeAfter(Long since, String lastEventId) {
+        if (since != null) {
+            // 负数不是合法断点（最小是 -1 = 从头），夹回来避免把「全量回放」写成别的意思。
+            return Math.max(-1L, since);
+        }
+        if (lastEventId == null || lastEventId.isBlank()) {
+            return -1L;
+        }
+        try {
+            return Long.parseLong(lastEventId.trim());
+        } catch (NumberFormatException e) {
+            return -1L;
+        }
     }
 }

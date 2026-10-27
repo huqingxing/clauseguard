@@ -402,14 +402,16 @@ public class ReviewService {
     }
 
     /**
-     * 打开前端 SSE 订阅：先按 Last-Event-ID 从重放存储补齐缺失事件，再注册实时扇出。
+     * 打开前端 SSE 订阅：先按断点从重放存储补齐缺失事件，再注册实时扇出。
+     *
+     * 只认一个 afterSeq：`?since=` 与 `Last-Event-ID` 的折算放在 Controller，
+     * 否则「我看到第几条」会出现两套解析规则，边界上必然对不齐。
      */
-    public SseEmitter stream(String reviewId, String lastEventId) {
+    public SseEmitter stream(String reviewId, long afterSeq) {
         reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ReviewNotFoundException(reviewId));
 
         SseEmitter emitter = new SseEmitter(Duration.ofMinutes(10).toMillis());
-        long afterSeq = parseLastEventId(lastEventId);
 
         // 先注册实时订阅，避免重放与实时之间漏事件；afterSeq 用于去重。
         LiveSubscription sub = new LiveSubscription(emitter, afterSeq);
@@ -468,17 +470,6 @@ public class ReviewService {
      */
     public String generateTraceparent() {
         return traceSupport.resolveTraceparent(null);
-    }
-
-    private long parseLastEventId(String lastEventId) {
-        if (lastEventId == null || lastEventId.isBlank()) {
-            return -1L;
-        }
-        try {
-            return Long.parseLong(lastEventId.trim());
-        } catch (NumberFormatException e) {
-            return -1L;
-        }
     }
 
     private Instant parseTs(String ts) {

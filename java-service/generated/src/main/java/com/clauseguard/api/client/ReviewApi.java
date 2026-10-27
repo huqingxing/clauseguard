@@ -332,11 +332,13 @@ public class ReviewApi extends BaseApi {
      * <p><b>200</b> - SSE 事件流。
      * <p><b>404</b> - 资源不存在。
      * @param id  (required)
+     * @param since 只回放 seq 大于该值的事件（-1 / 省略 &#x3D; 从头回放）。前端手动重建 EventSource 时 不会自动带 Last-Event-ID，断点只能走 query；两者同时出现时以 since 为准。 (optional)
+     * @param lastEventID 浏览器原生 EventSource 自动重连时携带的断点；与 since 语义相同。 (optional)
      * @return String
      * @throws RestClientException if an error occurs while attempting to invoke the API
      */
-    public String streamReview(@jakarta.annotation.Nonnull UUID id) throws RestClientException {
-        return streamReviewWithHttpInfo(id).getBody();
+    public String streamReview(@jakarta.annotation.Nonnull UUID id, @jakarta.annotation.Nullable Long since, @jakarta.annotation.Nullable String lastEventID) throws RestClientException {
+        return streamReviewWithHttpInfo(id, since, lastEventID).getBody();
     }
 
     /**
@@ -345,10 +347,12 @@ public class ReviewApi extends BaseApi {
      * <p><b>200</b> - SSE 事件流。
      * <p><b>404</b> - 资源不存在。
      * @param id  (required)
+     * @param since 只回放 seq 大于该值的事件（-1 / 省略 &#x3D; 从头回放）。前端手动重建 EventSource 时 不会自动带 Last-Event-ID，断点只能走 query；两者同时出现时以 since 为准。 (optional)
+     * @param lastEventID 浏览器原生 EventSource 自动重连时携带的断点；与 since 语义相同。 (optional)
      * @return ResponseEntity&lt;String&gt;
      * @throws RestClientException if an error occurs while attempting to invoke the API
      */
-    public ResponseEntity<String> streamReviewWithHttpInfo(@jakarta.annotation.Nonnull UUID id) throws RestClientException {
+    public ResponseEntity<String> streamReviewWithHttpInfo(@jakarta.annotation.Nonnull UUID id, @jakarta.annotation.Nullable Long since, @jakarta.annotation.Nullable String lastEventID) throws RestClientException {
         Object localVarPostBody = null;
         
         // verify the required parameter 'id' is set
@@ -364,6 +368,12 @@ public class ReviewApi extends BaseApi {
         final HttpHeaders localVarHeaderParams = new HttpHeaders();
         final MultiValueMap<String, String> localVarCookieParams = new LinkedMultiValueMap<String, String>();
         final MultiValueMap<String, Object> localVarFormParams = new LinkedMultiValueMap<String, Object>();
+
+        localVarQueryParams.putAll(apiClient.parameterToMultiValueMap(null, "since", since));
+        
+
+        if (lastEventID != null)
+        localVarHeaderParams.add("Last-Event-ID", apiClient.parameterToString(lastEventID));
 
         final String[] localVarAccepts = { 
             "text/event-stream", "application/json"

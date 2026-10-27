@@ -10,6 +10,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.net.URI;
 import java.time.OffsetDateTime;
@@ -18,6 +19,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -69,10 +71,49 @@ class ReviewControllerTest {
     @Test
     void streamReturns404WhenReviewNotFound() throws Exception {
         when(reviewService.isAgentUnavailable()).thenReturn(false);
-        when(reviewService.stream(any(), any())).thenThrow(new ReviewNotFoundException("x"));
+        when(reviewService.stream(any(), anyLong())).thenThrow(new ReviewNotFoundException("x"));
 
         mockMvc.perform(get("/api/v1/reviews/00000000-0000-0000-0000-0000000000d1/stream"))
                 .andExpect(status().isNotFound());
+    }
+
+    // ---- 重连断点：?since= 与 Last-Event-ID 折成同一个 afterSeq ----
+
+    @Test
+    void streamPassesSinceAsAfterSeq() throws Exception {
+        when(reviewService.isAgentUnavailable()).thenReturn(false);
+        when(reviewService.stream(any(), anyLong())).thenReturn(new SseEmitter());
+
+        mockMvc.perform(get("/api/v1/reviews/00000000-0000-0000-0000-0000000000e1/stream?since=7"))
+                .andExpect(status().isOk());
+
+        verify(reviewService).stream("00000000-0000-0000-0000-0000000000e1", 7L);
+    }
+
+    @Test
+    void streamFallsBackToLastEventIdWhenSinceMissing() throws Exception {
+        when(reviewService.isAgentUnavailable()).thenReturn(false);
+        when(reviewService.stream(any(), anyLong())).thenReturn(new SseEmitter());
+
+        mockMvc.perform(get("/api/v1/reviews/00000000-0000-0000-0000-0000000000e2/stream")
+                        .header("Last-Event-ID", "3"))
+                .andExpect(status().isOk());
+
+        verify(reviewService).stream("00000000-0000-0000-0000-0000000000e2", 3L);
+    }
+
+    @Test
+    void resumeAfterPrefersQueryOverHeader() {
+        assertEquals(7L, ReviewController.resumeAfter(7L, "3"));
+    }
+
+    @Test
+    void resumeAfterFallsBackToStart() {
+        assertEquals(3L, ReviewController.resumeAfter(null, "3"));
+        assertEquals(-1L, ReviewController.resumeAfter(null, null));
+        assertEquals(-1L, ReviewController.resumeAfter(null, "not-a-seq"));
+        // 负数不是合法断点：夹到 -1（从头回放），而不是把 -5 传给重放存储
+        assertEquals(-1L, ReviewController.resumeAfter(-5L, "3"));
     }
 
     // ---- Stage 9：approve 端点（数组 + X-Operator）----

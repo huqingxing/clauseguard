@@ -357,7 +357,7 @@ No authorization required
 
 ## streamReview
 
-> String streamReview(id)
+> String streamReview(id, since, lastEventID)
 
 订阅该审查运行的 SSE 事件流
 
@@ -380,8 +380,10 @@ public class Example {
 
         ReviewApi apiInstance = new ReviewApi(defaultClient);
         UUID id = UUID.randomUUID(); // UUID | 
+        Long since = 56L; // Long | 只回放 seq 大于该值的事件（-1 / 省略 = 从头回放）。前端手动重建 EventSource 时 不会自动带 Last-Event-ID，断点只能走 query；两者同时出现时以 since 为准。
+        String lastEventID = "lastEventID_example"; // String | 浏览器原生 EventSource 自动重连时携带的断点；与 since 语义相同。
         try {
-            String result = apiInstance.streamReview(id);
+            String result = apiInstance.streamReview(id, since, lastEventID);
             System.out.println(result);
         } catch (ApiException e) {
             System.err.println("Exception when calling ReviewApi#streamReview");
@@ -400,6 +402,8 @@ public class Example {
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **id** | **UUID**|  | |
+| **since** | **Long**| 只回放 seq 大于该值的事件（-1 / 省略 &#x3D; 从头回放）。前端手动重建 EventSource 时 不会自动带 Last-Event-ID，断点只能走 query；两者同时出现时以 since 为准。 | [optional] |
+| **lastEventID** | **String**| 浏览器原生 EventSource 自动重连时携带的断点；与 since 语义相同。 | [optional] |
 
 ### Return type
 

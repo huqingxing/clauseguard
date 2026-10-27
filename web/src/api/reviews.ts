@@ -5,7 +5,6 @@
  * 事件语义不在前端重新解释——原样解析后交给展示层，字段严格来自 events.schema.json。
  */
 
-import type { AgentStreamEvent } from '../types/events'
 import type {
   ApproveRequest,
   ApproveResponse,
@@ -14,12 +13,16 @@ import type {
   ReviewResult,
 } from '../types/api'
 import { apiGet, apiPost } from './http'
-import { retryDelayMs, shouldSkipSeq } from './stream'
 
 const BASE = '/api/v1/reviews'
 
-/** 收到终态事件即停止订阅：服务端在终态后会 complete()，不主动关会立刻触发一次重连。 */
-const TERMINAL_TYPES = new Set(['run.completed', 'run.failed'])
+/**
+ * 订阅逻辑住在 stream.ts：它要在 Node 里被直接测（注入假 EventSource），
+ * 而这个文件拖着 http.ts 的运行时依赖，测试没法干净地 import。
+ * 这里只做转发，调用方（stores/run.ts）的 import 路径不变。
+ */
+export { subscribeReview } from './stream'
+export type { ConnectionState, ReviewStream, ReviewStreamHandlers } from './stream'
 
 export interface CreateReviewInput {
   contract_id: string
@@ -72,84 +75,4 @@ export async function approveReview(
  */
 export function artifactUrl(reviewId: string): string {
   return `${BASE}/${reviewId}/artifact`
-}
-
-export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed'
-
-export interface ReviewStreamHandlers {
-  onEvent: (event: AgentStreamEvent) => void
-  onState?: (state: ConnectionState, attempt: number) => void
-}
-
-export interface ReviewStream {
-  close: () => void
-}
-
-/**
- * 订阅事件流，带 seq 去重与指数退避重连。
- *
- * 两个必须自己做的原因：
- * 1) 去重：手动重建 EventSource 不会带 Last-Event-ID，Java 会从头全量回放，
- *    不去重就会重复渲染（同一 node.finished 计两次）。
- * 2) 重连：下游熔断时 stream 返回 503，浏览器默认重试不给用户任何信号；
- *    这里把状态透出界面，并按 1s→30s 退避。
- */
-export function subscribeReview(reviewId: string, handlers: ReviewStreamHandlers): ReviewStream {
-  let source: EventSource | null = null
-  let closed = false
-  let attempt = 0
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let lastSeq = -1
-
-  const emit = (state: ConnectionState) => handlers.onState?.(state, attempt)
-
-  const close = () => {
-    if (closed) return
-    closed = true
-    if (timer) {
-      clearTimeout(timer)
-      timer = null
-    }
-    source?.close()
-    source = null
-    emit('closed')
-  }
-
-  const open = () => {
-    if (closed) return
-    emit(attempt === 0 ? 'connecting' : 'reconnecting')
-    const es = new EventSource(`${BASE}/${reviewId}/stream`)
-    source = es
-
-    es.onopen = () => {
-      attempt = 0
-      emit('open')
-    }
-
-    es.onmessage = (message) => {
-      let event: AgentStreamEvent
-      try {
-        event = JSON.parse(message.data) as AgentStreamEvent
-      } catch {
-        // 单条坏帧不应中断整条流（重放存储仍是事实源）。
-        return
-      }
-      if (shouldSkipSeq(event.seq, lastSeq)) return
-      if (typeof event.seq === 'number') lastSeq = event.seq
-      handlers.onEvent(event)
-      if (TERMINAL_TYPES.has(event.type)) close()
-    }
-
-    es.onerror = () => {
-      es.close()
-      if (source === es) source = null
-      if (closed) return
-      attempt += 1
-      emit('reconnecting')
-      timer = setTimeout(open, retryDelayMs(attempt))
-    }
-  }
-
-  open()
-  return { close }
 }

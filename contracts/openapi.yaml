@@ -55,6 +55,18 @@ paths:
           in: path
           required: true
           schema: { type: string, format: uuid }
+        - name: since
+          in: query
+          required: false
+          description: >-
+            只回放 seq 大于该值的事件（-1 / 省略 = 从头回放）。前端手动重建 EventSource 时
+            不会自动带 Last-Event-ID，断点只能走 query；两者同时出现时以 since 为准。
+          schema: { type: integer, format: int64, minimum: -1 }
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: 浏览器原生 EventSource 自动重连时携带的断点；与 since 语义相同。
+          schema: { type: string }
       responses:
         "200":
           description: SSE 事件流。
