@@ -8,3 +8,15 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+# 与主配置的演示账号一致：AdminControllerTest 用 httpBasic 走一遍真实认证链路，
+# 只靠 @WithMockUser 无法证明账号来源与 BCrypt 编码是通的。
+clauseguard:
+  security:
+    users:
+      - username: user
+        password: user123
+        role: USER
+      - username: admin
+        password: admin123
+        role: ADMIN

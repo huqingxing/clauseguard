@@ -186,8 +186,11 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
    共享同一个 LangGraph checkpoint，第二笔的 `findings` 会累加并出现一批 `unverified`
    （实测 23 → 46）。单笔隔离跑是干净的。属 Stage 9 设计遗留，修法见
    [docs/stage12-acceptance.md](docs/stage12-acceptance.md) 5.1。
-5. **没有认证**：审批的 `X-Operator` 是署名不是身份，任何人填名字都能审批；对内演示可用，
-   对外必须先接认证。
+5. **管理端已鉴权，用户端仍未鉴权**：`/api/v1/admin/**` 需要 `ADMIN` 角色（HTTP BASIC，
+   账号在 `application.yml` 的 `clauseguard.security.users`，启动时 BCrypt 编码后进内存，
+   **明文只用于本机演示，生产必须换**）。`/api/v1/**` 其余接口仍是 `permitAll`；审批的
+   `X-Operator` 依旧是「署名」不是「身份」，任何人填名字都能审批。对外上线前必须先接
+   用户认证，否则审计留痕形同虚设。
 6. **压测跑在 mock 后端**：数值反映编排层（下载/切分/6 专家 fan-out/critic/回写），
    不含真实供应商的模型时延与限流。
 7. **Python 侧 resume 是同一条 trace 的第二段根 span**（不是同一个 span 的延续），

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -32,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Content-Disposition 编码）、diff 透传、404。全局异常映射在切片内一并覆盖。
  */
 @WebMvcTest(ContractController.class)
+@Import(com.clauseguard.security.SecurityConfig.class)
 class ContractControllerTest {
 
     private static final String CONTRACT_ID = "00000000-0000-0000-0000-0000000000e1";

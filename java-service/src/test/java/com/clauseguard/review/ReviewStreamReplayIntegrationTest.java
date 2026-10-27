@@ -32,7 +32,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(ReviewController.class)
 @AutoConfigureMockMvc
 @Import({ReviewStreamReplayIntegrationTest.Beans.class,
-        com.clauseguard.observability.TraceContextSupport.class})
+        com.clauseguard.observability.TraceContextSupport.class,
+        com.clauseguard.security.SecurityConfig.class})
 class ReviewStreamReplayIntegrationTest {
 
     @Autowired
