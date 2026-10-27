@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 路由 `/admin`：运维健康。
+ * 管理端 `/admin`（独立入口 admin.html）：运维健康。
  *
  * 前端不直接探 Python：/api/v1/admin/health 由 Java 代理探测后聚合，
  * 所以这里看到的是「Java 视角下 Python 是否可达」——正是出问题时需要知道的那一层。

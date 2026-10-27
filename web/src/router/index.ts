@@ -1,16 +1,17 @@
 /**
- * 路由（Stage 12：6 条）。
+ * 用户端路由（4 条）。管理端是另一个入口 admin.html，不在这里。
  *
  * 划分依据是「用户此刻在做什么」而不是技术分层：
  *   /                       合同列表      —— 入口，找合同/传合同
  *   /contracts/:id          工作台        —— 三栏：原文 + 发现 + 运行
  *   /reviews/:id            审查详情      —— 结果视角，可分享的落地页
  *   /reviews/:id/approve    审批页        —— 375px 优先，手机上逐条批
- *   /eval                   评测看板      —— token/成本/质量/增量收益
- *   /admin                  运维健康      —— 双栈 + 依赖
  *
  * 工作台与详情分开的理由：工作台要发起运行（写），详情只读；
  * 把「分享一条链接给同事看结果」与「发起一次新运行」放在同一页面会误操作。
+ *
+ * 运维健康与评测看板移出本文件：它们暴露双栈拓扑与成本结构，属内部视角，
+ * 现在由独立的 admin.html 承载（见 src/admin/AdminApp.vue）。
  */
 
 import { createRouter, createWebHistory } from 'vue-router'
@@ -45,19 +46,7 @@ const router = createRouter({
       props: true,
       meta: { title: '人工审批' },
     },
-    {
-      path: '/eval',
-      name: 'eval',
-      component: () => import('../views/EvalView.vue'),
-      meta: { title: '评测看板' },
-    },
-    {
-      path: '/admin',
-      name: 'admin',
-      component: () => import('../views/AdminView.vue'),
-      meta: { title: '运维健康' },
-    },
-    // 未知路径回列表：没有 404 页面时，落到空白比落到首页更让人困惑。
+    // 旧链接兜底：/admin、/eval 已移到独立入口，这里交给 main.ts 做 302 到 admin.html。
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
   scrollBehavior: () => ({ top: 0 }),

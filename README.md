@@ -63,9 +63,11 @@ curl localhost:8000/healthz                     # {"status":"ok","service":"pyth
 cd web && npm install && npm run dev            # 前端 5173（可选）
 ```
 
-### 界面（web/，6 条路由）
+### 界面（web/，两个入口：用户端 4 条路由 + 管理端 2 屏）
 
-打开 http://127.0.0.1:5173 后按下面的顺序走一遍，就是完整的一次审查：
+用户端与管理端是**两个独立 HTML 入口**，各自一套导航，产物也分开：用户端包里不含运维/评测代码。
+
+用户端 http://127.0.0.1:5173 — 按下面顺序走一遍就是一次完整审查：
 
 | 路由 | 页面 | 做什么 |
 | --- | --- | --- |
@@ -73,8 +75,16 @@ cd web && npm install && npm run dev            # 前端 5173（可选）
 | `/contracts/:id` | 工作台 | 三栏：左原文 / 中风险发现 / 右运行态；点「全量审查」 |
 | `/reviews/:id/approve` | 审批页 | 375px 优先；高风险条款逐条 通过/驳回/改措辞 |
 | `/reviews/:id` | 结果页 | 只读落地页，可分享；审批后续跑完成看结果 |
-| `/eval` | 评测看板 | token / 成本 / 校验通过率 / 增量收益 |
-| `/admin` | 运维健康 | Java + Python 双栈状态，10 秒轮询 |
+
+管理端 http://127.0.0.1:5173/admin（生产 `/admin`，产物 `admin.html`）：
+
+| 屏 | 做什么 |
+| --- | --- |
+| 运维健康 | Java + Python 双栈状态，10 秒轮询 |
+| 评测看板 | token / 成本 / 校验通过率 / 增量收益（`/admin#eval`，老链接 `/eval` 自动跳转） |
+
+分开的理由：这两屏暴露的是内部拓扑（谁探谁、依赖是否连通）与成本结构，不是给签约方看的。
+但**这层分开只隔离入口，不隔离权限**——`/api/v1/admin/**` 目前未鉴权，知道接口的人绕开页面也能调。
 
 演示合同第五条（违约金不设上限）会同时触发两个专家，因此审批页会显示
 **1 条条款 / 2 个风险点**——审批按条款拍板，不是按风险点。
@@ -122,7 +132,7 @@ GRANT ALL PRIVILEGES ON clauseguard.* TO 'clauseguard'@'localhost';
 | `contracts/` | `openapi.yaml`（对外 API）+ `events.schema.json`（跨服务事件，`additionalProperties=false`）+ 代码生成脚本 |
 | `java-service/` | Spring Boot 3.5 / JDK 21，包 `com.clauseguard`：contract / review / eval / admin / events / mcp / observability |
 | `python-agent/` | Python 3.12 + uv，包 `app`：graph（节点与拓扑）/ agents（6 专家）/ tools / prompts（版本化）/ parse / render / incremental / observability |
-| `web/` | Vue3 + Vite + TS + Pinia + vue-router + Element Plus；6 条路由、三栏工作台、375px 审批页（只连 Java） |
+| `web/` | Vue3 + Vite + TS + Pinia + vue-router + Element Plus；两个入口（用户端 4 路由 / 管理端 2 屏）、三栏工作台、375px 审批页（只连 Java） |
 | `deploy/` | docker-compose、nginx、`otel/`（OTLP 采集器 + 链路验证）、`locust/`（压测）、`demo/`（演示合同生成） |
 | `eval/` | 评测数据集生成、runner、指标、报告（`eval/README.md`） |
 | `docs/` | ADR、阶段验收报告、压测报告、演示脚本（`docs/README.md`） |

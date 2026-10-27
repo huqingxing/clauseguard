@@ -1,20 +1,21 @@
 <script setup lang="ts">
 /**
- * 应用外壳：品牌 + 导航 + 内容区。
+ * 用户端外壳：品牌 + 导航 + 内容区。
+ *
+ * 导航只有「合同」一项——运维与评测已移到独立入口 admin.html（见 src/admin/AdminApp.vue），
+ * 用户端不该出现内部视角的入口。单项导航在桌面侧栏仍然保留，因为它是品牌下方的定位锚，删掉反而显得页面没装好。
  *
  * 移动端（<768px）导航沉到底部做成 tab bar——审批人在手机上单手操作，
  * 顶部汉堡菜单要多一次点击，底部栏才是移动端的默认习惯。
+ * 只有一项时底部栏没意义，改为「返回列表」——在 375px 审批页里这才是真要按的那个键。
  */
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
+const router = useRouter()
 
-const items = [
-  { to: '/', label: '合同', name: 'contracts' },
-  { to: '/eval', label: '评测', name: 'eval' },
-  { to: '/admin', label: '运维', name: 'admin' },
-]
+const items = [{ to: '/', label: '合同', name: 'contracts' }]
 
 /** 工作台/详情/审批都算「合同」这一支，高亮不能只按 path 精确匹配。 */
 const activeName = computed(() => {
@@ -22,6 +23,15 @@ const activeName = computed(() => {
   if (name === 'workbench' || name === 'review' || name === 'approve') return 'contracts'
   return name
 })
+
+/** 首页自身不需要「返回列表」；其余页面都有上一层可回。 */
+const canGoBack = computed(() => route.name !== 'contracts')
+
+function goBack() {
+  // 有历史就退一步（保留用户原来的筛选/页码），直接打开链接时退回列表。
+  if (window.history.state?.back) router.back()
+  else void router.push('/')
+}
 </script>
 
 <template>
@@ -53,6 +63,7 @@ const activeName = computed(() => {
     </main>
 
     <nav class="tabbar">
+      <button v-if="canGoBack" type="button" class="tab" @click="goBack">‹ 返回列表</button>
       <router-link
         v-for="item in items"
         :key="item.to"
@@ -191,10 +202,15 @@ const activeName = computed(() => {
   .tab {
     flex: 1;
     padding: 12px 0;
+    /* 同一套样式要同时吃住 <a>（合同）与 <button>（返回列表），故显式清掉按钮默认外观。 */
+    border: 0;
+    background: transparent;
+    font-family: inherit;
     text-align: center;
     font-size: 13px;
     color: var(--el-text-color-regular);
     text-decoration: none;
+    cursor: pointer;
   }
 
   .tab.active {

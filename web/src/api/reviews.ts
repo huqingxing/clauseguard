@@ -14,6 +14,7 @@ import type {
   ReviewResult,
 } from '../types/api'
 import { apiGet, apiPost } from './http'
+import { retryDelayMs, shouldSkipSeq } from './stream'
 
 const BASE = '/api/v1/reviews'
 
@@ -133,10 +134,8 @@ export function subscribeReview(reviewId: string, handlers: ReviewStreamHandlers
         // 单条坏帧不应中断整条流（重放存储仍是事实源）。
         return
       }
-      if (typeof event.seq === 'number') {
-        if (event.seq <= lastSeq) return
-        lastSeq = event.seq
-      }
+      if (shouldSkipSeq(event.seq, lastSeq)) return
+      if (typeof event.seq === 'number') lastSeq = event.seq
       handlers.onEvent(event)
       if (TERMINAL_TYPES.has(event.type)) close()
     }
@@ -147,8 +146,7 @@ export function subscribeReview(reviewId: string, handlers: ReviewStreamHandlers
       if (closed) return
       attempt += 1
       emit('reconnecting')
-      const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempt - 1, 5))
-      timer = setTimeout(open, delay)
+      timer = setTimeout(open, retryDelayMs(attempt))
     }
   }
 

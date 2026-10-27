@@ -8,7 +8,7 @@ else
 EVAL_PY := python-agent/.venv/bin/python
 endif
 
-.PHONY: up down logs gen test-py test-java eval eval-smoke eval-baseline fmt contracts-validate \
+.PHONY: up down logs gen test-py test-java test-web eval eval-smoke eval-baseline fmt contracts-validate \
         demo-contract trace-demo bench run-py
 
 up:
@@ -29,6 +29,10 @@ test-py:
 
 test-java:
 	cd java-service && mvn -q test
+
+# Stage 12：前端纯逻辑单测。用 Node 内置 runner + 原生 TS，不引测试框架（铁律 5）。
+test-web:
+	cd web && npm run test:unit
 
 # Stage 13 评测：一条命令产出 eval/out/report.md（与 baseline 对比）。
 # 本地 venv 不存在时回退 uv（CI 同款执行路径）。

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 路由 `/eval`：评测看板。
+ * 管理端 `/eval`（独立入口 admin.html#eval）：评测看板。
  *
  * 数据来自 review_event 的聚合（不建新表），所以口径必须写在页面上：
  * 这些是「已跑过的审查」的真实用量，不是离线评测集（后者在 docs/benchmark.md）。

@@ -38,7 +38,7 @@ DOCX 浏览器不能原生渲染（PDF 用 `<iframe>` 即可，故没有引 pdfj
 
 ## 端口与库名
 
-java 8080 | python 8000 | web 5173 | mysql 3306(db=clauseguard) | postgres 5432(db=clauseguard_agent) | redis 6379 | minio 9000/9001
+java 8080 | python 8000 | web 5173（用户端 `/`，管理端 `/admin`）| mysql 3306(db=clauseguard) | postgres 5432(db=clauseguard_agent) | redis 6379 | minio 9000/9001
 
 ## 编码规范
 

@@ -11,7 +11,9 @@
 
 ## 1. 交付内容
 
-### 1.1 六条路由
+### 1.1 两个入口：用户端 4 条路由 + 管理端 2 屏
+
+用户端 `index.html`（`/`）：
 
 | 路由 | 页面 | 职责 |
 | --- | --- | --- |
@@ -19,32 +21,50 @@
 | `/contracts/:id` | 审查工作台 | 三栏：原文 / 风险发现·条款变更 / 运行态；发起全量或增量审查 |
 | `/reviews/:id` | 审查结果 | 只读落地页，可分享给同事；批注稿下载 |
 | `/reviews/:id/approve` | 人工审批 | 375px 优先，逐条 通过/驳回/改措辞 |
-| `/eval` | 评测看板 | token / 成本 / 质量 / 增量收益 |
-| `/admin` | 运维健康 | Java + Python 双栈状态，10 秒轮询 |
 
-工作台与详情分开是有意的：工作台能发起运行（写），详情只读。
-把「分享一条结果链接」和「发起一次新运行」放同一页面会误操作。
+管理端 `admin.html`（`/admin`，视图用 hash 切换，不挂 router）：
+
+| 屏 | 职责 |
+| --- | --- |
+| `#admin` 运维健康 | Java + Python 双栈状态，10 秒轮询 |
+| `#eval` 评测看板 | token / 成本 / 质量 / 增量收益 |
+
+两处拆分各有理由：
+
+- **工作台 vs 详情**：工作台能发起运行（写），详情只读。把「分享一条结果链接」和「发起一次新运行」放同一页面会误操作。
+- **用户端 vs 管理端**：运维与评测暴露的是内部拓扑（谁探谁、依赖通不通）与成本结构，不是给签约方看的。
+  拆成两个 HTML 入口后，用户端产物里不再有任何指向 `/admin`、`/eval` 的引用（实测 `grep` 0 命中），
+  管理端代码也不进用户首包。老链接 `/admin`、`/eval` 由 `main.ts` 在挂载前 `replace` 到新入口。
+
+**但要说清楚：这只分开入口，不构成权限隔离。** `/api/v1/admin/**` 仍未鉴权（README 已知限制第 5 条），
+绕开页面直接调接口一样能拿到数据；真正的门是后端的 `SecurityFilterChain`，属下一阶段。
 
 ### 1.2 新增/改动文件
 
 ```
-web/src/router/index.ts           6 条路由 + 标题
+web/index.html                    用户端入口
+web/admin.html                    管理端入口（独立产物）
+web/src/admin/main.ts             管理端挂载（无 router，省掉回退配置）
+web/src/admin/AdminApp.vue        管理端外壳：深色侧栏 + 两屏切换 + 返回用户端
+web/src/router/index.ts           用户端 4 条路由 + 标题（管理端两条已移出）
 web/src/api/http.ts               统一 fetch（错误体解析、409 语义交给上层）
 web/src/api/contracts.ts          上传/列表/详情/diff/原文地址
 web/src/api/reviews.ts            创建/结果/分页 findings/审批/产物 + SSE 订阅器
-web/src/api/eval.ts               评测汇总
-web/src/api/admin.ts              健康聚合
+web/src/api/stream.ts             SSE 纯逻辑：退避序列 + seq 去重（可单测）
+web/src/api/eval.ts               评测汇总（仅管理端引用）
+web/src/api/admin.ts              健康聚合（仅管理端引用）
 web/src/types/api.ts              REST 契约镜像（snake_case，可选字段标 ?）
 web/src/types/events.ts           事件契约镜像 + 类型守卫（isRunCompleted 等）
 web/src/stores/run.ts             一次运行的实时状态（跨页面存活）
 web/src/stores/session.ts         审批人署名（localStorage）
-web/src/components/AppShell.vue   导航外壳（移动端底部 tab bar）
+web/src/components/AppShell.vue   用户端外壳（导航只剩「合同」；移动端底部栏给「返回列表」）
 web/src/components/DocViewer.vue  PDF iframe / DOCX docx-preview + 证据定位
 web/src/components/FindingsPanel.vue  风险筛选、引用展开、定位
 web/src/components/RunPanel.vue   状态/节点进度/摘要/事件流/审批入口
 web/src/components/EventFeed.vue  事件流（贴底自动跟随）
 web/src/components/UploadCard.vue 上传（新合同 / 新版本共用）
-web/src/views/*.vue               六个页面
+web/src/views/*.vue               六个页面（4 个属用户端，2 个归管理端复用）
+web/tests/stream.test.ts          SSE 纯逻辑单测（Node 内置 runner）
 ```
 
 删除：`web/src/components/ReviewConsole.vue`（Stage 11 的单页控制台，被工作台取代；
@@ -54,7 +74,7 @@ web/src/views/*.vue               六个页面
 
 | 依赖 | 版本 | 为什么必须新增 |
 | --- | --- | --- |
-| `vue-router` | 4.6.4 | 6 条路由无法用手写 hash 分发维护 |
+| `vue-router` | 4.6.4 | 4 条路由 + 可分享的 `/reviews/:id` 链接需要真实 URL；管理端只有两屏，故**没有**给它挂 router |
 | `docx-preview` | 0.4.1 | 浏览器不能原生渲染 DOCX；PDF 走 `<iframe>`，因此**没有**引 pdfjs |
 
 ## 2. 关键设计说明（面试可讲的三点）
@@ -108,20 +128,47 @@ $ cd java-service && mvn test        # JAVA_HOME=JDK 21
 
 $ cd web && npm run build            # 含 vue-tsc 类型检查
 ✓ built in 10.55s
+
+$ cd web && npm run test:unit        # 提交前自查补入（Node 内置 runner，零新增依赖）
+# tests 7   # pass 7   # fail 0
 ```
 
 Java 从 61 增至 63：新增 `approveDecodesPercentEncodedOperator` 与
 `decodeOperatorKeepsAsciiAndMalformedInput`（见 4.1）。
 
-### 3.2 六条路由可达（真实 Chrome 渲染，不是只看 200）
+前端单测覆盖的是重连退避与 seq 去重两处纯逻辑（`web/src/api/stream.ts`）：退避写错会在熔断期间
+持续打满网关且界面看不出来，seq 比较方向写错会让重连后计数翻倍或把新事件全丢掉——这两种故障
+在手工验收里都只表现为「数字不对」，很难复现。用 Node 内置 test runner 而非引入测试框架，
+是为了不新增版本表之外的依赖（铁律 5）。
+
+### 3.2 两个入口可达（真实 Chrome 渲染，不是只看 200）
+
+用户端：
 
 ```
 /                                            200  渲染出 "ClauseGuard / 合同风险审查 / 上传合同 / 进入工作台"
-/eval                                        200  渲染出 "评测看板 / 审查总数 / 单次平均成本 / 增量重审收益"
-/admin                                       200  渲染出 "运维健康 / Java 网关 / Python 编排 / 全部正常"
 /contracts/{id}                              200  三栏渲染，DOCX 原文可见
 /reviews/{id}                                200  结果页可渲染
 /reviews/{id}/approve                        200  审批页可渲染
+```
+
+管理端（`/admin`、`/admin/`、`/admin.html` 三种写法都落到同一入口）：
+
+```
+/admin                                       200  <title>ClauseGuard 管理端</title>，侧栏 "运维健康 / 评测看板"，h1=运维健康
+点第二项                                      切到 #eval，h1=评测看板
+/eval（老链接）                               302 到 /admin.html#eval，h1=评测看板
+```
+
+分离度实测：
+
+```
+用户端入口包 main-*.js 中 grep "api/v1/admin|api/v1/eval|运维健康|评测看板"  -> 0 命中
+用户端侧栏 .nav-item                                                       -> ["合同"]
+管理端侧栏 .side-item                                                      -> ["运维健康 双栈探活", "评测看板 用量与质量"]
+管理端底部                                                                 -> "← 返回用户端"
+375px 审批页底部栏                                                          -> ["‹ 返回列表", "合同"]，scrollW=375/375
+两端控制台错误                                                              -> 0
 ```
 
 工作台实测（1440×900，真实布局数值）：
@@ -214,6 +261,8 @@ console 告警、样式不生效），改用 `type="info"` + `.muted` 类；补�
    本阶段未擅自变更。**
 2. **没有登录与权限**：`X-Operator` 是「署名」不是「认证」，任何人填名字都能审批。
    演示与内网试点可用，对外必须先接认证（否则审计留痕形同虚设）。
+   **管理端虽已拆成独立入口，但那只是入口隔离**：`/api/v1/admin/**` 未鉴权，知道接口就能绕过页面拿数据；
+   真正的门在后端 `SecurityFilterChain`，属下一阶段。
 3. **契约里可选字段仍为空**：`ContractSummary.last_review` 的 `mode` / `findings_count`
    在 Java 侧未填充（`Review` 实体没有 `mode` 列），列表页按 `—` 展示。补它需要在列表
    里逐行取事件（N+1），本阶段没做。
