@@ -22,7 +22,7 @@
 
 | 层 | 版本 |
 |---|---|
-| Java | JDK 21 / Spring Boot 3.5.x / spring-ai-alibaba 1.1.2.0 / spring-ai 1.1.2 |
+| Java | JDK 21 / Spring Boot 3.5.x / spring-ai-alibaba 1.1.2.0 / spring-ai 1.1.2 / flyway-core + flyway-mysql（版本由 BOM 托管；Flyway 10+ 把 MySQL 方言拆成独立模块，缺 flyway-mysql 会报 `Unsupported Database: MySQL 8.0`） |
 | Python | 3.12 / fastapi>=0.115 / pydantic>=2.8 / langchain>=1.0,<2 / langgraph>=1.0,<2 / langgraph-checkpoint-postgres / psycopg[binary,pool] / PyMuPDF / python-docx / lxml |
 | 前端 | Node 20 / Vue 3.5 / Vite 6 / TypeScript / Pinia / Element Plus |
 | 基础设施 | MySQL 8.4 / PostgreSQL 16 + pgvector / Redis 7 / MinIO |

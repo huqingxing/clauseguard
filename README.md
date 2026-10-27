@@ -81,6 +81,24 @@ CLAUSEGUARD_AGENT_LLM_API_KEY=sk-...            # 只走环境变量，绝不入
 | `make eval` | 120 份合同 / 466 条标注的召回、误报、引用、定位、P95、成本，产出 `eval/out/report.md` | 无 |
 | `make bench` | 20 并发 5 分钟压测（需先 `make run-py`），产出 `eval/out/bench*.csv` | 无（mock 后端） |
 
+### 起不来时按顺序核对
+
+| 症状 | 真实原因 | 处置 |
+| --- | --- | --- |
+| `class file version 65.0 ... up to 61.0` | `JAVA_HOME` 指向 JDK 17/11 | 指到 JDK 21 再 `mvn test` |
+| `Access denied for user 'clauseguard'@'localhost'` | 库里没有这个账号（Flyway 建表，但不建库/账号） | 用管理员账号建库与账号，见下方 SQL |
+| `Unsupported Database: MySQL 8.0` | Flyway 10+ 把 MySQL 方言拆成独立模块 | 需要 `flyway-mysql`（pom 已含，勿删） |
+| `Tomcat initialized with port 49277` | 宿主进程注入了 `SERVER__PORT` 之类环境变量 | `env -u SERVER__PORT mvn spring-boot:run` |
+| 事件流 500 / `RedisSystemException` | 本机 Redis < 5.0，不支持 Stream | 升级 Redis，或用 `--clauseguard.event-store=in-memory` 本地跑 |
+
+建库（一次性，`<admin>` 换成你的 MySQL 管理员）：
+
+```sql
+CREATE DATABASE IF NOT EXISTS clauseguard CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER IF NOT EXISTS 'clauseguard'@'localhost' IDENTIFIED BY 'clauseguard';
+GRANT ALL PRIVILEGES ON clauseguard.* TO 'clauseguard'@'localhost';
+```
+
 ## 目录
 
 | 目录 | 内容 |

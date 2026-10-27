@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 from langchain_core.runnables import RunnableConfig
 
+from app.config import get_settings
 from app.events import EventType, get_emitter
 from app.graph.state import Clause, ReviewState
 from app.parse.loader import load_document
@@ -56,6 +57,11 @@ def _state_source(state: ReviewState, config: RunnableConfig) -> dict[str, Any] 
 async def _download_source(source: dict[str, Any]) -> tuple[bytes, str]:
     """经 Java 暴露的 REST 通道拉取合同文件（铁律 1：Python 不直连业务库/存储）。"""
     url = str(source["download_url"])
+    # Java 给的是相对路径（/api/v1/contracts/{id}/content）——它不知道 Python 眼里自己
+    # 叫什么地址，所以补 base_url 是编排层的责任。httpx 只认绝对 URL，不补会直接报
+    # "Request URL is missing an 'http://' or 'https://' protocol" 并降级成空条款。
+    if url.startswith("/"):
+        url = f"{get_settings().java_base_url.rstrip('/')}{url}"
     async with httpx.AsyncClient(timeout=DOWNLOAD_TIMEOUT_S) as client:
         response = await client.get(url)
         response.raise_for_status()

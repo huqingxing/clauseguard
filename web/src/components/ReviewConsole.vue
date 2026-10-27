@@ -9,6 +9,8 @@
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import type { UploadFile } from 'element-plus'
+import { uploadContract } from '../api/contracts'
 import { createReview, subscribeReview } from '../api/reviews'
 import ClauseDiffList from './ClauseDiffList.vue'
 import RunSummary from './RunSummary.vue'
@@ -25,6 +27,8 @@ const contractId = ref('')
 const version = ref(2)
 const incrementalOnly = ref(true)
 const running = ref(false)
+const uploading = ref(false)
+const uploadedName = ref('')
 const completed = ref<RunCompletedEvent | null>(null)
 const interrupt = ref<InterruptEvent | null>(null)
 const feed = ref<AgentStreamEvent[]>([])
@@ -58,6 +62,30 @@ const clauseRows = computed<ClauseRow[]>(() => {
     risk_level: riskById.get(clauseId),
   }))
 })
+
+/**
+ * 选中文件即上传（auto-upload=false + on-change，避免 el-upload 自己发请求时
+ * 拿不到统一错误处理）。成功后把 contract_id / version 回填到下面的表单，
+ * 用户不必再手抄一个 UUID。
+ */
+async function onPick(file: UploadFile) {
+  const raw = file.raw
+  if (!raw) return
+  uploading.value = true
+  try {
+    const uploaded = await uploadContract(raw)
+    contractId.value = uploaded.contract_id
+    version.value = uploaded.version
+    uploadedName.value = `${uploaded.filename}（${Math.round(uploaded.size_bytes / 1024)} KB）`
+    // 首版没有基线可比：增量会退化成全量，开关必须关掉而不是让用户点了才发现。
+    if (uploaded.version <= 1) incrementalOnly.value = false
+    ElMessage.success(`上传成功，已填入合同 ID（version=${uploaded.version}）`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '上传失败')
+  } finally {
+    uploading.value = false
+  }
+}
 
 async function start() {
   if (!contractId.value.trim()) {
@@ -115,6 +143,22 @@ onBeforeUnmount(() => {
     </el-header>
 
     <el-main>
+      <el-card shadow="never" style="margin-bottom: 16px">
+        <template #header>上传合同（DOCX / PDF）</template>
+        <el-upload
+          :auto-upload="false"
+          :show-file-list="false"
+          :disabled="uploading"
+          accept=".docx,.pdf"
+          :on-change="onPick"
+        >
+          <el-button :loading="uploading">选择文件并上传</el-button>
+        </el-upload>
+        <el-text v-if="uploadedName" type="success" size="small" style="margin-left: 12px">
+          已上传：{{ uploadedName }}，合同 ID 与版本号已自动填入下方
+        </el-text>
+      </el-card>
+
       <el-card shadow="never">
         <el-form :inline="true" @submit.prevent="start">
           <el-form-item label="合同 ID">
