@@ -174,6 +174,7 @@ CLAUSEGUARD_AGENT_LLM_API_KEY=sk-...            # 只走环境变量，绝不入
 | `Tomcat initialized with port 49277` | 宿主进程注入了 `SERVER__PORT` 之类环境变量 | `env -u SERVER__PORT mvn spring-boot:run` |
 | 事件流 500 / `RedisSystemException` | 本机 Redis < 5.0，不支持 Stream | 升级 Redis（见下方 `ERR unknown command 'XRANGE'`） |
 | `ERR unknown command 'XRANGE'`（SSE 端点是 500） | 6379 端口后面是 Redis 4.x/3.x（常见于 Windows 版 `D:\develop\redis`），它抢在 docker 之前监听同一端口 | `redis-cli INFO server` 看版本；停掉旧实例（`Stop-Process` 或 `Stop-Service` 并设 `StartupType Manual`）后改用 `redis-stack-server`；用 `XADD`/`XLEN`/`XRANGE` 而不是 `PING` 探活。**临时**降级可加 `--clauseguard.event-store=in-memory`，但断线续传失效，仅限排障 |
+| 应用启动即退出（exit 1）+ `事件存储初始化失败：...（ERR unknown command 'XADD' / 无法连接 Redis）` | 启动期已做 Redis Streams 能力探测（fail-fast）：连不上或版本 < 5.0 会在 boot 阶段直接失败，而不是等第一个用户打开页面才 500 | 按上面两行修 Redis；这是**预期行为**，不是 bug。确认 `redis-cli XADD` 从宿主机能成功后应用即可正常启动 |
 
 建库（一次性，`<admin>` 换成你的 MySQL 管理员）：
 

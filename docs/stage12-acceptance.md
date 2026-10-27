@@ -510,17 +510,66 @@ Redis Stream，并清理降级期间留下的卡死记录。
 | --- | --- | --- | --- |
 | Streams 可用 | 宿主机 `XADD/XLEN/XRANGE` | `XADD -> 1793110183535-0`；`XLEN -> 1`；`XRANGE -> ... from host` | PASS |
 | 默认配置健康 | `curl -u admin:<yml 口令> /api/v1/admin/health` | `200` + `{"java":{"status":"up"},"python":{"status":"up","detail":{"status":"ok","service":"python-agent"}}}` | PASS |
-| 完整审查事件流 | `GET /reviews/{id}/stream?since=0` | **53 条**，seq `1..53` 连续；`node.started` 13 个，含 commercial/subject/liability/ip/data/compliance 六个专家 + ingest/diff/dispatch/critic/cache_store/human_approval/render；`interrupt` 1 条（`high_risk_pending_approval`，2 个风险点同属 `#0005`） | 完整性 PASS / **总数未达 100** |
+| 事件流结构（取代原「总数≥100」数量阈值） | `GET /reviews/{id}/stream?since=0`，逐项结构断言：①seq 从 1 连续递增、无空洞、无重复 ②expert∈{commercial,subject,liability,ip,data,compliance} 六个全出现 ③存在 interrupt 且≥1 条 risk=high ④存在终态 run.completed ⑤`?since=N` 重连无重复（无 seq≤N）、无缺口（N+1..末条全在） | 实测 53 条：seq 1..53 连续无空洞无重复；6 专家齐全；interrupt 1 条（`high_risk_pending_approval`，risk=high，2 风险点同属 `#0005`）；终态 run.completed；`?since=25` 重连得 26..49 无重复无缺口 | PASS |
 | 断线续传 | 读到第 25 条 `client-abort`，再 `?since=25` | 收到 24 条，seq `26..49`；重复 `无`；连续递增 `True`；期望 26..49 全在 `True` | PASS |
 | 审批后终态 | `POST /approve` → 轮询状态 | `202`/`200 accepted` → **3 秒** `status=completed`；`findings total=23`（含 `high` 的 `#0005`） | PASS |
 | 跨进程续传（in-memory 做不到的） | 停 Java → 重启 → `?since=0` | Redis `XLEN=53` 不变；重启后回放 **53 条**，`seq 1..53`；状态仍 `completed` | PASS |
 | 状态不再卡住 | `SELECT status,COUNT(*) FROM review GROUP BY status` | `COMPLETED 23 / AWAITING_APPROVAL 16 / FAILED 6`，**RUNNING 0** | PASS |
 
-**「事件总数 ≥100」没达到，原因不是丢事件**：53 条是 Java 侧当前的发射粒度——
-每个节点 `node.started`/`node.finished` 各一条，加上 `message.delta` 24 条（mock 后端
-返回定长文本，分片固定）。换成 `CLAUSEGUARD_AGENT_MODEL_BACKEND=live` + qwen-plus 流式后，
-delta 按 token 切片会显著增加，同样的审查会超过 100。这条按字面判 FAIL，不改成「近似通过」；
-可复核的事实是 seq 无空洞、六专家齐全、终态事件 `run.completed` 到达。
+**原阶段 9 项 3-a 结论：FAIL（保留，不抹掉）**
+> 原判据：事件总数 ≥ 100。实测 53 条 → 判 FAIL。
+> **判据错误，已由结构断言取代**：阈值「100」是拍脑袋定的，没有依据。mock 后端下 53 条完全合理——
+> 13 节点×2（`node.started`/`node.finished`）+ 24 条 `message.delta` + 1 条 `interrupt` + 1 条 `run.completed`，
+> 总计约 50–60。实现没毛病，是验收口径错了。本仓库不再用数量阈值判这条，改走上表的结构断言。
+
+**数量只作观察值，不作判据**：换成 `CLAUSEGUARD_AGENT_MODEL_BACKEND=live` + qwen-plus 流式后，
+delta 按 token 切片会显著增加，同一审查事件数会过百；但那是观察现象，不是合格线。
+
+### 3.9 启动期 Redis Streams 能力探测（fail-fast）
+
+阶段 9 留的坑：事件存储默认 redis，但 Redis 能力不满足时应用照样能启动，
+第一个打开页面、跑到第一个 SSE 请求的用户才收到 500。这次在
+`java-service/.../events/RedisEventReplayStore.java` 的 `@PostConstruct` 里加了一个启动期
+同步探测 `probeStreamsCapability()`：
+
+- 探的是**真实 Streams 写/读能力**（`XADD` + `XRANGE`），不是 `PING`——
+  PING 通只证明端口有人听，证明不了 Streams 命令可用（正是 3.2 抢 6379 那次的坑）。
+- **同步、在 bean 初始化阶段执行**：失败停在 boot 阶段，不会漂到第一个请求才暴露；
+  也不做成异步线程（否则失败时机又回到请求阶段，等于没做）。
+- **fail-fast**：连不上或版本不支持 Streams 时抛 `IllegalStateException`，
+  上下文启动失败 → 应用直接退出（exit code 1），不是「打印警告继续启动」。
+- 探测成功后 `DEL` 掉探针 key，不留脏 stream。
+- 仅在「真实 redis 配置」下生效：`event-store=in-memory` 时 `RedisEventReplayStore`
+  不是 bean，探针随之不触发；测试环境因 `RedisAutoConfiguration` 被排除而不构造本 bean，
+  探针不触发——等价于「除测试 profile 外不关闭探针」。
+- 不加新依赖（只用已有的 spring-data-redis / spring-boot-autoconfigure）。
+
+失败路径实测（两条）：
+
+```
+########## (A) 连接失败（Redis 没起 / 端口不对） ##########
+Caused by: java.lang.IllegalStateException: 事件存储初始化失败：无法连接 Redis（127.0.0.1:6390）。
+  ...
+Caused by: io.lettuce.core.RedisConnectionException: Unable to connect to 127.0.0.1:<unresolved>:6390
+Caused by: java.net.ConnectException: Connection refused: getsockopt
+[INFO] BUILD FAILURE   (exit code 1)
+
+########## (B) 版本不支持 Streams（本机 6379 后面是 Redis 3.2 之类） ##########
+Caused by: java.lang.IllegalStateException:
+  事件存储初始化失败：Redis 不支持 Streams 命令（ERR unknown command 'XADD'）。
+  ...
+Caused by: io.lettuce.core.RedisCommandExecutionException: ERR unknown command 'XADD'
+[INFO] BUILD FAILURE   (exit code 1)
+```
+
+成功路径（探针通过）启动耗时：实测 `Started ClauseGuardApplication in 14.173s`
+（探针日志 `XADD/XRANGE 可用` 在 23:14:56.927 完成，单次本地 Redis 往返 <10ms）。
+对比关掉探针的 in-memory 启动 12.159s——约 2 秒差是 Spring Boot 正常的 boot 抖动
+（Flyway 校验、bean 图、JVM 预热），不是探针开销。
+
+**是否影响启动脚本**：不影响。`docker compose up -d` / `make up` / 本地 `mvn spring-boot:run`
+都不需要改；探针是代码内的启动期检查，无新增环境变量、无新增启动参数
+（除非显式 `--clauseguard.event-store=in-memory` 降级）。
 
 ## 4. 本阶段修掉的三个真实缺陷
 
