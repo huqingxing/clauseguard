@@ -23,6 +23,7 @@ import { useRunStore } from '../stores/run'
 import type { ContractDetail, ContractDiff, Finding, ReviewMode } from '../types/api'
 import type { ClauseRow } from '../types/events'
 import { clauseStatusOf } from '../types/events'
+import { describeApiError } from '../utils/error'
 
 const props = defineProps<{ id: string }>()
 
@@ -80,7 +81,7 @@ async function loadContract() {
   try {
     contract.value = await getContract(props.id)
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载合同失败'
+    error.value = describeApiError(err, '加载合同失败')
   } finally {
     loading.value = false
   }
@@ -113,7 +114,7 @@ async function start(selected: ReviewMode) {
     await run.attach(created.review_id)
     ElMessage.success(`已发起${selected === 'incremental' ? '增量' : '全量'}审查`)
   } catch (err) {
-    ElMessage.error(`发起审查失败：${err instanceof Error ? err.message : '未知错误'}`)
+    ElMessage.error(`发起审查失败：${describeApiError(err, '未知错误')}`)
   } finally {
     starting.value = false
   }

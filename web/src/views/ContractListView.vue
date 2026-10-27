@@ -5,7 +5,7 @@
  * 列表只回答一个问题「有哪些合同、各审到哪一步了」。所以每行给一个明确的下一步动作，
  * 而不是把发起审查的表单也塞进来——发起运行属于工作台。
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listContracts } from '../api/contracts'
@@ -13,6 +13,7 @@ import UploadCard from '../components/UploadCard.vue'
 import { useRunStore } from '../stores/run'
 import type { ContractSummary, ReviewStatus } from '../types/api'
 import { REVIEW_STATUS_LABEL, REVIEW_STATUS_TYPE } from '../types/api'
+import { describeApiError } from '../utils/error'
 
 const router = useRouter()
 const run = useRunStore()
@@ -28,11 +29,22 @@ async function load() {
   try {
     contracts.value = await listContracts(keyword.value)
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载合同列表失败'
+    // 后端不在时 err.message 是裸的「HTTP 500」，照抄到界面上等于把故障推给用户去猜。
+    error.value = describeApiError(err, '加载合同列表失败')
   } finally {
     loading.value = false
   }
 }
+
+/**
+ * 加载失败时不能再显示「还没有合同」：那句话会让刚上传过的人以为数据丢了，
+ * 进而重复上传。空态文案必须区分「真的没有」和「没取到」。
+ */
+const emptyText = computed(() =>
+  error.value
+    ? '列表没能加载出来，按上面的提示处理后点「重试」'
+    : '还没有合同。上传一份 .docx 开始（仓库里 deploy/demo/demo-contract.docx 可直接用）',
+)
 
 async function onUploaded() {
   await load()
@@ -95,7 +107,11 @@ onMounted(() => {
         </div>
       </div>
 
-      <el-alert v-if="error" type="error" :closable="false" :title="error" show-icon class="alert" />
+      <el-alert v-if="error" type="error" :closable="false" :title="error" show-icon class="alert">
+        <template #default>
+          <el-button size="small" :loading="loading" @click="load">重试</el-button>
+        </template>
+      </el-alert>
 
       <el-table v-loading="loading" :data="contracts" size="default" row-key="contract_id">
         <el-table-column prop="filename" label="文件名" min-width="220" show-overflow-tooltip />
@@ -133,7 +149,7 @@ onMounted(() => {
         </el-table-column>
 
         <template #empty>
-          <el-empty description="还没有合同。上传一份 .docx 开始（仓库里 deploy/demo/demo-contract.docx 可直接用）" />
+          <el-empty :description="emptyText" />
         </template>
       </el-table>
     </el-card>

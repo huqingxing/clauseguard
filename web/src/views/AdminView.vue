@@ -9,6 +9,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getAdminHealth } from '../api/admin'
 import type { AdminHealth } from '../types/api'
+import { describeApiError } from '../utils/error'
 
 const POLL_INTERVAL_MS = 10_000
 
@@ -26,7 +27,7 @@ async function load() {
     updatedAt.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
   } catch (err) {
     // 请求失败本身也是一种健康信息：Java 挂了才会连 /health 都拿不到。
-    error.value = err instanceof Error ? err.message : '健康检查请求失败'
+    error.value = describeApiError(err, '健康检查请求失败')
     health.value = null
   } finally {
     loading.value = false

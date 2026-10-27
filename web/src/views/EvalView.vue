@@ -9,6 +9,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { getEvalSummary } from '../api/eval'
 import type { EvalSummary } from '../types/api'
+import { describeApiError } from '../utils/error'
 
 const summary = ref<EvalSummary | null>(null)
 const loading = ref(false)
@@ -20,7 +21,7 @@ async function load() {
   try {
     summary.value = await getEvalSummary()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载评测汇总失败'
+    error.value = describeApiError(err, '加载评测汇总失败')
   } finally {
     loading.value = false
   }

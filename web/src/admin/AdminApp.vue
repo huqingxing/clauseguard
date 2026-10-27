@@ -15,6 +15,7 @@ import { useRoute } from 'vue-router'
 import { getAdminHealth } from '../api/admin'
 import { ApiError, AuthError, setUnauthorizedHandler } from '../api/http'
 import { clearCredential, getUsername, hasCredential, setCredential } from '../api/auth'
+import { describeApiError } from '../utils/error'
 
 /**
  * 侧栏三项：运维健康、评测看板、待审批。审批详情（/approvals/:id）不占菜单项——
@@ -59,7 +60,7 @@ async function probe(): Promise<string> {
     if (err instanceof AuthError) return '账号或密码错误'
     // 认证通过但角色不够：这跟密码错不是一回事，说错了会让人一直换密码。
     if (err instanceof ApiError && err.status === 403) return '该账号没有管理员权限（需要 ADMIN 角色）'
-    return err instanceof Error ? `无法连接后端：${err.message}` : '无法连接后端'
+    return describeApiError(err, '无法连接后端')
   }
 }
 

@@ -13,6 +13,7 @@ import { getApprovalQueue } from '../api/admin'
 import { ApiError } from '../api/http'
 import { formatWait, isOverdue } from '../utils/wait'
 import type { ApprovalQueueItem } from '../types/api'
+import { describeApiError } from '../utils/error'
 
 const items = ref<ApprovalQueueItem[]>([])
 const total = ref(0)
@@ -39,7 +40,7 @@ async function load() {
   } catch (err) {
     // 401 已由 AdminApp 的全局处理器翻回登录卡；这里只留业务失败（500/网络）。
     if (err instanceof ApiError && err.status === 401) return
-    error.value = err instanceof Error ? err.message : '加载待审批队列失败'
+    error.value = describeApiError(err, '加载待审批队列失败')
   } finally {
     loading.value = false
   }

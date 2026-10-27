@@ -90,6 +90,25 @@ function nodeDuration(duration?: number): string {
       :title="`运行失败：${run.failure.message}`"
     />
 
+    <!--
+      后端不在时不会有任何事件到达（连 run.failed 都收不到），上面那条 failure 永远不显示。
+      没有这一条，页面就停在「排队中 / 重连中（第 N 次）」一声不吭——实测把 java 进程
+      kill 掉后确实如此。这里明确承认「连不上」，并说明恢复后会自动接上。
+    -->
+    <el-alert
+      v-if="run.offline"
+      type="error"
+      :closable="false"
+      show-icon
+      class="alert"
+      title="连不上服务"
+    >
+      <template #default>
+        已重连 {{ run.attempts }} 次仍未收到任何事件。请确认后端（java-service 8080）是否在运行；
+        恢复后本页会自动接上，进度不会丢，不需要手动刷新。
+      </template>
+    </el-alert>
+
     <div v-if="run.nodes.length" class="nodes">
       <div class="section-head">
         <span>节点进度</span>

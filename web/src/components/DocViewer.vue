@@ -12,6 +12,7 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 import { renderAsync } from 'docx-preview'
 import { contractContentUrl } from '../api/contracts'
 import type { ContractDetail } from '../types/api'
+import { describeApiError } from '../utils/error'
 
 const props = defineProps<{ contract: ContractDetail | null }>()
 
@@ -63,7 +64,7 @@ async function renderDocx(contract: ContractDetail) {
     })
   } catch (err) {
     if (token !== renderToken) return
-    error.value = err instanceof Error ? err.message : '原文渲染失败'
+    error.value = describeApiError(err, '原文渲染失败')
   } finally {
     if (token === renderToken) loading.value = false
   }

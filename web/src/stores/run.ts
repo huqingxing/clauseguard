@@ -32,6 +32,15 @@ export interface RunFailure {
   message: string
 }
 
+/**
+ * 「连不上服务」的判定阈值（重连次数）。
+ *
+ * 为什么是 3：退避间隔 1s→2s→4s，第 3 次失败时已经过去约 7 秒。取 1 会把「请求正好撞上重启」
+ * 误报成故障；取 5 要等 31 秒才给提示，而用户通常在第 10 秒就自己刷新页面了——
+ * 提示必须赶在那之前出现，否则等于没有。
+ */
+const OFFLINE_ATTEMPTS = 3
+
 export const useRunStore = defineStore('run', () => {
   const reviewId = ref('')
   const connection = ref<ConnectionState>('closed')
@@ -58,6 +67,21 @@ export const useRunStore = defineStore('run', () => {
   const findings = computed<Finding[]>(() => completed.value?.findings ?? snapshot.value?.findings ?? [])
 
   const pendingItems = computed(() => interrupt.value?.payload?.items ?? [])
+
+  /**
+   * 服务不可达：重连若干次仍然一条事件都没收到。
+   *
+   * 为什么需要它：`failure` 只在收到 run.failed 事件时才置位，而「后端根本没起来」
+   * 时永远不会收到事件——界面就一直停在「排队中 / 重连中（第 N 次）」，
+   * 不刷新、不说原因，看上去像卡死。这里把这种状态显式暴露出去。
+   */
+  const offline = computed(
+    () =>
+      attempts.value >= OFFLINE_ATTEMPTS &&
+      connection.value !== 'open' &&
+      !completed.value &&
+      !failure.value,
+  )
 
   const nodes = computed<NodeTrace[]>(() => {
     const byNode = new Map<string, NodeTrace>()
@@ -169,6 +193,7 @@ export const useRunStore = defineStore('run', () => {
     status,
     findings,
     pendingItems,
+    offline,
     nodes,
     attach,
     stop,
