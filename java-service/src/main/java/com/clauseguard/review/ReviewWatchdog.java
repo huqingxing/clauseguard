@@ -11,9 +11,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +52,10 @@ public class ReviewWatchdog {
     private final ObjectMapper mapper;
     private final Duration timeout;
 
+    /** UTC 墙钟格式化（与 ReviewRepository 看门狗查询、updateLastEventAt 写入口径一致）。 */
+    private static final DateTimeFormatter UTC_FMT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneOffset.UTC);
+
     public ReviewWatchdog(ReviewRepository reviewRepository,
                           ReviewEventRepository eventRepository,
                           EventReplayStore replayStore,
@@ -64,6 +71,7 @@ public class ReviewWatchdog {
     }
 
     @Scheduled(fixedDelayString = "${clauseguard.review.watchdog.interval:5m}")
+    @Transactional
     public void reapStuckRunning() {
         try {
             ScanResult result = scan();
@@ -84,12 +92,16 @@ public class ReviewWatchdog {
     public ScanResult scan() {
         Instant now = Instant.now();
         Instant cutoff = now.minus(timeout);
-        List<String> candidates = reviewRepository.findStaleRunningIds(ReviewStatus.RUNNING.name(), cutoff);
+        // cutoff / now 以 UTC 字符串传入，与 Repository 看门狗查询、last_event_at 写入口径一致，
+        // 彻底绕开 Hibernate 把 Instant 绑 DATETIME 列时的时区偏移（否则会静默选不出候选）。
+        String nowUtc = UTC_FMT.format(now);
+        String cutoffUtc = UTC_FMT.format(cutoff);
+        List<String> candidates = reviewRepository.findStaleRunningIds(ReviewStatus.RUNNING.name(), cutoffUtc);
         int killed = 0;
         int skipped = 0;
         for (String reviewId : candidates) {
             int affected = reviewRepository.reapStuckRunning(
-                    reviewId, ReviewStatus.FAILED.name(), ReviewStatus.RUNNING.name(), cutoff, now);
+                    reviewId, ReviewStatus.FAILED.name(), ReviewStatus.RUNNING.name(), cutoffUtc, nowUtc);
             if (affected == 1) {
                 emitTimeoutEvent(reviewId, now);
                 killed++;

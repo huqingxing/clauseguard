@@ -9,7 +9,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -63,25 +62,32 @@ public interface ReviewRepository extends JpaRepository<Review, String> {
      * <p>lastEventAt 为 NULL 时兜底 createdAt——「状态落了、一条事件都没来」正是最典型的
      * 卡死形态，排除 NULL 会让看门狗对它彻底失明。这里的 COALESCE 条件必须与下面的条件更新
      * 完全一致，否则会出现「选出来但更新不动」（永久 skipped）。
+     *
+     * <p>用原生 SQL + UTC 字符串参数，绕开 Hibernate 把 Instant 绑 DATETIME 列时的时区偏移
+     * （与 updateLastEventAt 同一坑：Instant 绑 DATETIME 会系统性偏 8 小时，导致
+     * COALESCE(...) < cutoff 恒为 FALSE、静默地一条都选不出来）。cutoff 由调用方用 UTC 字符串传入，
+     * 与 last_event_at 的写入口径一致；本环境下 TIMESTAMP 与 DATETIME 显示在同一墙钟框架，
+     * 直接用字符串比较既正确又无需 CONVERT_TZ（避免依赖时区表）。
      */
-    @Query("SELECT r.id FROM Review r WHERE r.status = :running "
-            + "AND COALESCE(r.lastEventAt, r.createdAt) < :cutoff")
+    @Query(value = "SELECT r.id FROM review r WHERE r.status = :running "
+            + "AND COALESCE(r.last_event_at, r.created_at) < :cutoff", nativeQuery = true)
     List<String> findStaleRunningIds(@Param("running") String runningStatus,
-                                     @Param("cutoff") Instant cutoff);
+                                     @Param("cutoff") String cutoff);
 
     /**
-     * 条件更新（Stage 14）：把单条 RUNNING 置 FAILED，返回受影响行数。
+     * 条件更新（Stage 14）：把单条 RUNNING 置 FAILED，顺手把 last_event_at 推进到回收时刻（now），返回受影响行数。
      *
      * <p>幂等 + 并发安全全靠 WHERE 里的两个条件：多副本同时扫同一批时，只有一个实例
      * 能拿到 1，其余拿 0 —— 拿不到就什么都不做，绝不重复补终态事件。
+     * <p>同样用原生 SQL + UTC 字符串（cutoff / now），原因同 findStaleRunningIds：绕开 Instant→DATETIME 的时区偏移。
      */
     @Modifying
-    @Query("UPDATE Review r SET r.status = :failed, r.lastEventAt = :now "
+    @Query(value = "UPDATE review r SET r.status = :failed, r.last_event_at = :now "
             + "WHERE r.id = :id AND r.status = :running "
-            + "AND COALESCE(r.lastEventAt, r.createdAt) < :cutoff")
+            + "AND COALESCE(r.last_event_at, r.created_at) < :cutoff", nativeQuery = true)
     int reapStuckRunning(@Param("id") String id,
                          @Param("failed") String failedStatus,
                          @Param("running") String runningStatus,
-                         @Param("cutoff") Instant cutoff,
-                         @Param("now") Instant now);
+                         @Param("cutoff") String cutoff,
+                         @Param("now") String now);
 }

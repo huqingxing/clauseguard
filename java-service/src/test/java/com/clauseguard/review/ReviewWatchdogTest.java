@@ -93,12 +93,12 @@ class ReviewWatchdogTest {
 
     @Test
     void scanOnlyAsksForRunningStatus() {
-        when(reviewRepository.findStaleRunningIds(anyString(), any(Instant.class))).thenReturn(List.of());
+        when(reviewRepository.findStaleRunningIds(anyString(), anyString())).thenReturn(List.of());
 
         ReviewWatchdog.ScanResult result = watchdog().scan();
 
         // AWAITING_APPROVAL / COMPLETED / FAILED 一个都不该进候选集
-        verify(reviewRepository).findStaleRunningIds(eq(ReviewStatus.RUNNING.name()), any(Instant.class));
+        verify(reviewRepository).findStaleRunningIds(eq(ReviewStatus.RUNNING.name()), anyString());
         assertThat(result.scanned()).isZero();
         assertThat(result.killed()).isZero();
     }
@@ -106,11 +106,11 @@ class ReviewWatchdogTest {
     @Test
     void onlyOneSideWinsWhenTwoInstancesRaceOnTheSameRow() {
         String reviewId = "r-race";
-        when(reviewRepository.findStaleRunningIds(eq(ReviewStatus.RUNNING.name()), any(Instant.class)))
+        when(reviewRepository.findStaleRunningIds(eq(ReviewStatus.RUNNING.name()), anyString()))
                 .thenReturn(List.of(reviewId, reviewId));
         // 同一条被两个副本同时扫到：第一次条件更新命中，第二次被 WHERE(status=RUNNING) 挡下 → 0 行
         when(reviewRepository.reapStuckRunning(eq(reviewId), eq(ReviewStatus.FAILED.name()),
-                eq(ReviewStatus.RUNNING.name()), any(Instant.class), any(Instant.class)))
+                eq(ReviewStatus.RUNNING.name()), anyString(), anyString()))
                 .thenReturn(1, 0);
         when(eventRepository.maxSeq(reviewId)).thenReturn(52L);
 
@@ -128,10 +128,10 @@ class ReviewWatchdogTest {
     @Test
     void losingCandidateGeneratesNoEventAtAll() {
         String reviewId = "r-skipped";
-        when(reviewRepository.findStaleRunningIds(eq(ReviewStatus.RUNNING.name()), any(Instant.class)))
+        when(reviewRepository.findStaleRunningIds(eq(ReviewStatus.RUNNING.name()), anyString()))
                 .thenReturn(List.of(reviewId));
         when(reviewRepository.reapStuckRunning(anyString(), anyString(), anyString(),
-                any(Instant.class), any(Instant.class))).thenReturn(0);
+                anyString(), anyString())).thenReturn(0);
 
         ReviewWatchdog.ScanResult result = watchdog().scan();
 
@@ -144,10 +144,10 @@ class ReviewWatchdogTest {
     @Test
     void eventIsPersistedBeforeReplayAndFanout() {
         String reviewId = "r-order";
-        when(reviewRepository.findStaleRunningIds(eq(ReviewStatus.RUNNING.name()), any(Instant.class)))
+        when(reviewRepository.findStaleRunningIds(eq(ReviewStatus.RUNNING.name()), anyString()))
                 .thenReturn(List.of(reviewId));
         when(reviewRepository.reapStuckRunning(anyString(), anyString(), anyString(),
-                any(Instant.class), any(Instant.class))).thenReturn(1);
+                anyString(), anyString())).thenReturn(1);
         when(eventRepository.maxSeq(reviewId)).thenReturn(9L);
 
         watchdog().scan();
