@@ -46,6 +46,18 @@ clauseguard:
     # 下游 SSE 调用整体超时；超时才触发熔断计数
     connect-timeout: 5s
     response-timeout: 30s
+  review:
+    # 看门狗（Stage 14）：把「长时间没有任何事件的 RUNNING」自动收敛到 FAILED。
+    # 根因是「状态先落 RUNNING，再去开事件流」——流断了状态就永远停在 RUNNING，
+    # 只能靠人发现 + 一次性 SQL 处理（Redis 降级那次留下过 6 条）。
+    watchdog:
+      enabled: ${CLAUSEGUARD_WATCHDOG_ENABLED:true}
+      # 超时阈值按「最长真实审查耗时」定，宁大勿小：判早了会把还在推进的大合同误杀成 FAILED，
+      # 而判晚了只是晚一点收敛。30m 对本机 mock 审查（数十秒量级）留了两个数量级余量。
+      # 不要为了「快」把它调到 5 分钟这种激进值。
+      timeout: 30m
+      # 扫描间隔：远小于 timeout，保证卡死的审查最多多等一个 interval 就被回收。
+      interval: 5m
   # 事件重放存储实现：redis（默认，需 Redis ≥ 5.0 的 Streams）| in-memory（仅故障降级用：
   # 进程内 Map，重启即丢，断线续传失效，不要写进任何启动脚本当默认）
   event-store: redis

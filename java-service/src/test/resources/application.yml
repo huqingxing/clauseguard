@@ -12,6 +12,10 @@ spring:
 # 与主配置的演示账号一致：AdminControllerTest 用 httpBasic 走一遍真实认证链路，
 # 只靠 @WithMockUser 无法证明账号来源与 BCrypt 编码是通的。
 clauseguard:
+  review:
+    # @Scheduled 在测试里会跟着时钟乱跑：靠配置关掉，而不是让用例睡 5 分钟等它
+    watchdog:
+      enabled: false
   security:
     users:
       - username: user
