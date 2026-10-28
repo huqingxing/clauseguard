@@ -153,10 +153,11 @@ class ReviewStreamReplayIntegrationTest {
                 com.fasterxml.jackson.databind.ObjectMapper mapper,
                 com.clauseguard.contract.ContractRepository contractRepository,
                 com.clauseguard.observability.TraceContextSupport traceSupport) {
+            // WebMvcTest 切片没有数据源/事务管理器，写入事务用就地执行的空实现顶替
             return new ReviewService(
                     reviewRepository, reviewEventRepository, approvalRepository,
                     replayStore, agentClient, circuitBreakerRegistry, mapper, contractRepository,
-                    traceSupport);
+                    traceSupport, NoopTransactionManager.create());
         }
     }
 }

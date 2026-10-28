@@ -29,6 +29,8 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.net.URI;
@@ -37,6 +39,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -73,6 +76,12 @@ public class ReviewService {
     private final ObjectMapper mapper;
     private final ContractRepository contractRepository;
     private final TraceContextSupport traceSupport;
+    /**
+     * 「事件落库 + last_event_at 刷新」必须是一个事务（阶段 13 写入路径）。
+     * 为什么用模板而不是 @Transactional：handleAgentEvent 由同一 bean 内的 reactor 回调调用，
+     * 走不到代理，注解会静默失效；这里的写入是在 Python SSE 回调线程里，本来也没有外层事务可用。
+     */
+    private final TransactionTemplate eventWriteTx;
 
     private final Map<String, Set<LiveSubscription>> liveEmitters = new ConcurrentHashMap<>();
     private final Map<String, Boolean> subscribing = new ConcurrentHashMap<>();
@@ -86,7 +95,8 @@ public class ReviewService {
             CircuitBreakerRegistry circuitBreakerRegistry,
             ObjectMapper mapper,
             ContractRepository contractRepository,
-            TraceContextSupport traceSupport) {
+            TraceContextSupport traceSupport,
+            PlatformTransactionManager transactionManager) {
         this.reviewRepository = reviewRepository;
         this.eventRepository = eventRepository;
         this.approvalRepository = approvalRepository;
@@ -96,6 +106,7 @@ public class ReviewService {
         this.mapper = mapper;
         this.contractRepository = contractRepository;
         this.traceSupport = traceSupport;
+        this.eventWriteTx = new TransactionTemplate(transactionManager);
     }
 
     /**
@@ -237,7 +248,24 @@ public class ReviewService {
         entity.setType(event.type());
         entity.setPayload(event.rawJson());
         entity.setTs(parseTs(event.ts()));
-        eventRepository.save(entity);
+
+        // 阶段 13 写入路径：事件行与 review.last_event_at 在同一个事务里写，要么都有要么都没有。
+        // 分开提交的话进程在中间死掉就会留下「事件有了、时间戳没动」的两套事实，而阶段 14 的
+        // 超时回收只读时间戳，会把一条还在推进的审查误判成卡死。ts 解析失败(null)时不回写，保留上一值。
+        eventWriteTx.executeWithoutResult(status -> {
+            eventRepository.save(entity);
+            // 对齐到秒：review_event.ts 列定义为 timestamp（秒级），落库会被截断到秒。
+            // 这里 last_event_at 也取秒级值，保证「实时写入」与「回填」两条路径都严格等于
+            // MAX(review_event.ts)，而不是多出一个毫妙尾巴让阶段 14 的超时判定读到一个对不上的时间戳。
+            if (entity.getTs() != null) {
+                // 对齐到「秒」且采用 round-half-up，与 review_event.ts（TIMESTAMP(fsp=0) 落库四舍五入）严格一致。
+                // 之前用 truncatedTo 直接截断，会在事件落在某秒后半段（如 22.935995）时让 last_event_at
+                // 比 MAX(review_event.ts) 少 1 秒，阶段 14 看门狗据此判定超时就会出现偏差。
+                reviewRepository.updateLastEventAt(reviewId,
+                        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneOffset.UTC)
+                                .format(roundSecond(entity.getTs())));
+            }
+        });
 
         replayStore.append(reviewId, event.seq(), event.type(), event.rawJson());
         fanout(reviewId, event);
@@ -378,6 +406,15 @@ public class ReviewService {
         return byClause;
     }
 
+    /**
+     * Stage 14：看门狗把卡死的审查补上终态后，经由这里扇出给在线订阅者。
+     * 为什么要单独一个入口：卡死意味着 Python 那边已经不会再有任何事件了，
+     * 终态只能由本服务自己生成；不扇出的话前端 SSE 会一直干等到超时才断。
+     */
+    public void fanoutSystemEvent(String reviewId, AgentEvent event) {
+        fanout(reviewId, event);
+    }
+
     private void fanout(String reviewId, AgentEvent event) {
         Set<LiveSubscription> subscriptions = liveEmitters.get(reviewId);
         if (subscriptions == null) {
@@ -470,6 +507,16 @@ public class ReviewService {
      */
     public String generateTraceparent() {
         return traceSupport.resolveTraceparent(null);
+    }
+
+    /**
+     * 把事件时间戳对齐到「秒」并采用 round-half-up，使其与 review_event.ts
+     * （TIMESTAMP(fsp=0)，MySQL 落库按四舍五入）完全一致。这样 last_event_at 写入路径
+     * 与 V5 回填路径（MAX(review_event.ts)）产出的秒级值严格相等，阶段 14 看门狗读到的
+     * 时间戳就不会和事件表对不上。
+     */
+    private Instant roundSecond(Instant ts) {
+        return ts.plus(500, ChronoUnit.MILLIS).truncatedTo(ChronoUnit.SECONDS);
     }
 
     private Instant parseTs(String ts) {

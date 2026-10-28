@@ -98,7 +98,7 @@ class ReviewServiceTest {
         service = new ReviewService(
                 reviewRepository, reviewEventRepository, approvalRepository,
                 replayStore, agentClient, registry, mapper, contractRepository,
-                new TraceContextSupport(noTracer()));
+                new TraceContextSupport(noTracer()), NoopTransactionManager.create());
         // 仅 createReview 路径需要 save；其余测试不触发，故标为 lenient 避免严格模式报错。
         lenient().when(reviewRepository.save(any(Review.class))).thenAnswer(i -> i.getArgument(0));
     }
@@ -221,6 +221,29 @@ class ReviewServiceTest {
         assertThat(review.getContractVersion()).isEqualTo("1");
         assertThat(review.getContentHash()).isEqualTo("hash-1");
         assertThat(review.getPendingPayload()).contains("\"clause_id\":\"c1\"");
+    }
+
+    // ---- Stage 13：last_event_at 写入路径 ----
+
+    @Test
+    void agentEventPersistsEventAndRefreshesLastEventAt() {
+        service.handleAgentEvent("r-last", new AgentEvent(
+                1, "2026-10-23T10:00:00+00:00", "node.started",
+                "{\"seq\":1,\"type\":\"node.started\"}"));
+
+        // 事件行与 last_event_at 必须在同一个写入路径里完成：时间戳取自事件 ts，不是落库时刻
+        verify(reviewEventRepository).save(any(ReviewEvent.class));
+        verify(reviewRepository).updateLastEventAt(eq("r-last"), eq("2026-10-23 10:00:00"));
+    }
+
+    @Test
+    void unparsableTsSkipsLastEventAtRefreshAndKeepsPreviousValue() {
+        service.handleAgentEvent("r-badts", new AgentEvent(
+                2, "not-a-timestamp", "node.started",
+                "{\"seq\":2,\"type\":\"node.started\"}"));
+
+        verify(reviewEventRepository).save(any(ReviewEvent.class));
+        verify(reviewRepository, never()).updateLastEventAt(anyString(), anyString());
     }
 
     // ---- Stage 9：approveReview 乐观锁：版本/哈希不匹配 → 409，无部分写入 ----

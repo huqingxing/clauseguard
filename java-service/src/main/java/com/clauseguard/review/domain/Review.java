@@ -53,6 +53,16 @@ public class Review {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    /**
+     * 最后一次有活动的时间 = 最近一条 review_event 的 ts。
+     * 阶段 13 新增：created_at 只能代表「发起时间」，审批续跑的审查 created_at 可能是一周前，
+     * 用它判超时（阶段 14）会误杀正在走审批的合同。活动以事件为准，审批动作本身不入 review_event。
+     * 不在实体内用 @PreUpdate 维护：会与批量更新路径打架且不可预测，写入只发生在 ReviewService
+     * 落库事件的同一路径内。允许 NULL（阶段 13 先不收紧 NOT NULL，待回填验证完整）。
+     */
+    @Column(name = "last_event_at")
+    private Instant lastEventAt;
+
     public Review() {
     }
 
@@ -126,5 +136,13 @@ public class Review {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Instant getLastEventAt() {
+        return lastEventAt;
+    }
+
+    public void setLastEventAt(Instant lastEventAt) {
+        this.lastEventAt = lastEventAt;
     }
 }

@@ -28,4 +28,11 @@ public interface ReviewEventRepository extends JpaRepository<ReviewEvent, Long> 
             + "where e.reviewId in :reviewIds and e.type = :type group by e.reviewId")
     List<Object[]> findLatestTsByType(
             @Param("reviewIds") Collection<String> reviewIds, @Param("type") String type);
+
+    /**
+     * 某条审查当前最大的事件 seq；没有任何事件返回 -1（coalesce 兜底，调用方直接 +1 即下一条）。
+     * Stage 14：看门狗补写终态事件时必须接着已有序列编号，不能从 0 重排——前端按 seq 去重与续传。
+     */
+    @Query("select coalesce(max(e.seq), -1) from ReviewEvent e where e.reviewId = :reviewId")
+    long maxSeq(@Param("reviewId") String reviewId);
 }
