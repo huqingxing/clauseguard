@@ -1,0 +1,1040 @@
+{
+  "method": "bm25-only(key-free) | strategy=S5_context | k=20",
+  "points_available": 466,
+  "coverage_at_focus": {
+    "20": {
+      "covered": 18,
+      "total": 20,
+      "rate": 0.9
+    },
+    "50": {
+      "covered": 46,
+      "total": 50,
+      "rate": 0.92
+    },
+    "100": {
+      "covered": 92,
+      "total": 100,
+      "rate": 0.92
+    }
+  },
+  "coverage_at_boilerplate": {
+    "20": {
+      "covered": 11,
+      "total": 20,
+      "rate": 0.55
+    },
+    "50": {
+      "covered": 27,
+      "total": 50,
+      "rate": 0.54
+    },
+    "100": {
+      "covered": 55,
+      "total": 100,
+      "rate": 0.55
+    }
+  },
+  "per_risk_focus": {
+    "acceptance_risk": {
+      "covered": 7,
+      "total": 7,
+      "rate": 1.0
+    },
+    "applicable_law_risk": {
+      "covered": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "authorization_risk": {
+      "covered": 5,
+      "total": 5,
+      "rate": 1.0
+    },
+    "breach_risk": {
+      "covered": 7,
+      "total": 7,
+      "rate": 1.0
+    },
+    "credential_risk": {
+      "covered": 0,
+      "total": 8,
+      "rate": 0.0
+    },
+    "cross_border_risk": {
+      "covered": 9,
+      "total": 9,
+      "rate": 1.0
+    },
+    "data_processing_risk": {
+      "covered": 8,
+      "total": 8,
+      "rate": 1.0
+    },
+    "delivery_risk": {
+      "covered": 6,
+      "total": 6,
+      "rate": 1.0
+    },
+    "disclaimer_risk": {
+      "covered": 6,
+      "total": 6,
+      "rate": 1.0
+    },
+    "export_control_risk": {
+      "covered": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "force_majeure_risk": {
+      "covered": 3,
+      "total": 3,
+      "rate": 1.0
+    },
+    "invoice_risk": {
+      "covered": 3,
+      "total": 3,
+      "rate": 1.0
+    },
+    "ip_ownership_risk": {
+      "covered": 3,
+      "total": 3,
+      "rate": 1.0
+    },
+    "jurisdiction_risk": {
+      "covered": 8,
+      "total": 8,
+      "rate": 1.0
+    },
+    "open_source_risk": {
+      "covered": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "payment_risk": {
+      "covered": 5,
+      "total": 5,
+      "rate": 1.0
+    },
+    "qualification_risk": {
+      "covered": 2,
+      "total": 2,
+      "rate": 1.0
+    },
+    "succession_risk": {
+      "covered": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "termination_risk": {
+      "covered": 4,
+      "total": 4,
+      "rate": 1.0
+    }
+  },
+  "zero_coverage_risk_types": [
+    "credential_risk"
+  ],
+  "rows": [
+    {
+      "contract_id": "cg-0001",
+      "clause_id": "cg-0001#0006",
+      "risk_type": "invoice_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_procedure_law:第二百二十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0001",
+      "clause_id": "cg-0001#0007",
+      "risk_type": "jurisdiction_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0001",
+      "clause_id": "cg-0001#0008",
+      "risk_type": "acceptance_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第七百九十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0001",
+      "clause_id": "cg-0001#0019",
+      "risk_type": "applicable_law_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第一百七十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0001",
+      "clause_id": "cg-0001#0022",
+      "risk_type": "ip_ownership_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第一百二十三条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0002",
+      "clause_id": "cg-0002#0001",
+      "risk_type": "credential_risk",
+      "top_k": 20,
+      "covered_focus": false,
+      "covered_boiler": false,
+      "matched_chunk_id": null
+    },
+    {
+      "contract_id": "cg-0002",
+      "clause_id": "cg-0002#0004",
+      "risk_type": "cross_border_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "securities_law:第一百七十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0002",
+      "clause_id": "cg-0002#0006",
+      "risk_type": "jurisdiction_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0002",
+      "clause_id": "cg-0002#0010",
+      "risk_type": "open_source_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "insurance_law:第一百一十三条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0002",
+      "clause_id": "cg-0002#0028",
+      "risk_type": "authorization_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一百六十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0003",
+      "clause_id": "cg-0003#0008",
+      "risk_type": "payment_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "enterprise_bankruptcy_law:第五十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0003",
+      "clause_id": "cg-0003#0019",
+      "risk_type": "credential_risk",
+      "top_k": 20,
+      "covered_focus": false,
+      "covered_boiler": false,
+      "matched_chunk_id": null
+    },
+    {
+      "contract_id": "cg-0003",
+      "clause_id": "cg-0003#0021",
+      "risk_type": "data_processing_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一千二百二十六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0004",
+      "clause_id": "cg-0004#0002",
+      "risk_type": "breach_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百八十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0004",
+      "clause_id": "cg-0004#0008",
+      "risk_type": "invoice_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_procedure_law:第二百二十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0004",
+      "clause_id": "cg-0004#0010",
+      "risk_type": "acceptance_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第七百九十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0005",
+      "clause_id": "cg-0005#0004",
+      "risk_type": "acceptance_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第七百九十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0005",
+      "clause_id": "cg-0005#0012",
+      "risk_type": "disclaimer_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百零六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0005",
+      "clause_id": "cg-0005#0018",
+      "risk_type": "termination_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "labor_contract_law:第三十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0006",
+      "clause_id": "cg-0006#0004",
+      "risk_type": "export_control_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_procedure_law:第二条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0006",
+      "clause_id": "cg-0006#0010",
+      "risk_type": "jurisdiction_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0006",
+      "clause_id": "cg-0006#0011",
+      "risk_type": "succession_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "labor_contract_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0006",
+      "clause_id": "cg-0006#0019",
+      "risk_type": "payment_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "enterprise_bankruptcy_law:第五十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0007",
+      "clause_id": "cg-0007#0007",
+      "risk_type": "breach_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百八十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0007",
+      "clause_id": "cg-0007#0017",
+      "risk_type": "export_control_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_procedure_law:第二条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0007",
+      "clause_id": "cg-0007#0033",
+      "risk_type": "succession_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "labor_contract_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0008",
+      "clause_id": "cg-0008#0002",
+      "risk_type": "credential_risk",
+      "top_k": 20,
+      "covered_focus": false,
+      "covered_boiler": false,
+      "matched_chunk_id": null
+    },
+    {
+      "contract_id": "cg-0008",
+      "clause_id": "cg-0008#0009",
+      "risk_type": "disclaimer_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百零六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0008",
+      "clause_id": "cg-0008#0019",
+      "risk_type": "jurisdiction_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0009",
+      "clause_id": "cg-0009#0003",
+      "risk_type": "cross_border_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "securities_law:第一百七十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0009",
+      "clause_id": "cg-0009#0013",
+      "risk_type": "payment_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "enterprise_bankruptcy_law:第五十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0009",
+      "clause_id": "cg-0009#0028",
+      "risk_type": "breach_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百八十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0009",
+      "clause_id": "cg-0009#0029",
+      "risk_type": "data_processing_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一千二百二十六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0010",
+      "clause_id": "cg-0010#0020",
+      "risk_type": "cross_border_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "securities_law:第一百七十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0010",
+      "clause_id": "cg-0010#0029",
+      "risk_type": "qualification_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0010",
+      "clause_id": "cg-0010#0033",
+      "risk_type": "authorization_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一百六十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0011",
+      "clause_id": "cg-0011#0003",
+      "risk_type": "delivery_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第六百零四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0011",
+      "clause_id": "cg-0011#0009",
+      "risk_type": "force_majeure_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百九十条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0011",
+      "clause_id": "cg-0011#0020",
+      "risk_type": "open_source_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "insurance_law:第一百一十三条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0011",
+      "clause_id": "cg-0011#0024",
+      "risk_type": "jurisdiction_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0012",
+      "clause_id": "cg-0012#0003",
+      "risk_type": "credential_risk",
+      "top_k": 20,
+      "covered_focus": false,
+      "covered_boiler": false,
+      "matched_chunk_id": null
+    },
+    {
+      "contract_id": "cg-0012",
+      "clause_id": "cg-0012#0017",
+      "risk_type": "breach_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百八十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0012",
+      "clause_id": "cg-0012#0025",
+      "risk_type": "data_processing_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一千二百二十六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0012",
+      "clause_id": "cg-0012#0028",
+      "risk_type": "succession_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "labor_contract_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0012",
+      "clause_id": "cg-0012#0029",
+      "risk_type": "jurisdiction_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0013",
+      "clause_id": "cg-0013#0001",
+      "risk_type": "authorization_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一百六十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0013",
+      "clause_id": "cg-0013#0002",
+      "risk_type": "delivery_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第六百零四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0013",
+      "clause_id": "cg-0013#0006",
+      "risk_type": "breach_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百八十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0013",
+      "clause_id": "cg-0013#0015",
+      "risk_type": "open_source_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "insurance_law:第一百一十三条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0014",
+      "clause_id": "cg-0014#0002",
+      "risk_type": "force_majeure_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百九十条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0014",
+      "clause_id": "cg-0014#0005",
+      "risk_type": "export_control_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_procedure_law:第二条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0014",
+      "clause_id": "cg-0014#0015",
+      "risk_type": "disclaimer_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百零六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0014",
+      "clause_id": "cg-0014#0017",
+      "risk_type": "open_source_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "insurance_law:第一百一十三条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0015",
+      "clause_id": "cg-0015#0010",
+      "risk_type": "termination_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "labor_contract_law:第三十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0015",
+      "clause_id": "cg-0015#0012",
+      "risk_type": "applicable_law_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第一百七十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0015",
+      "clause_id": "cg-0015#0018",
+      "risk_type": "cross_border_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "securities_law:第一百七十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0015",
+      "clause_id": "cg-0015#0020",
+      "risk_type": "disclaimer_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百零六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0016",
+      "clause_id": "cg-0016#0012",
+      "risk_type": "ip_ownership_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第一百二十三条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0016",
+      "clause_id": "cg-0016#0013",
+      "risk_type": "cross_border_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "securities_law:第一百七十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0016",
+      "clause_id": "cg-0016#0024",
+      "risk_type": "jurisdiction_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0016",
+      "clause_id": "cg-0016#0025",
+      "risk_type": "acceptance_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第七百九十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0017",
+      "clause_id": "cg-0017#0005",
+      "risk_type": "succession_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "labor_contract_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0017",
+      "clause_id": "cg-0017#0026",
+      "risk_type": "delivery_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第六百零四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0017",
+      "clause_id": "cg-0017#0029",
+      "risk_type": "data_processing_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一千二百二十六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0017",
+      "clause_id": "cg-0017#0031",
+      "risk_type": "cross_border_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "securities_law:第一百七十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0018",
+      "clause_id": "cg-0018#0004",
+      "risk_type": "authorization_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一百六十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0018",
+      "clause_id": "cg-0018#0011",
+      "risk_type": "acceptance_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第七百九十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0018",
+      "clause_id": "cg-0018#0013",
+      "risk_type": "cross_border_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "securities_law:第一百七十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0019",
+      "clause_id": "cg-0019#0007",
+      "risk_type": "credential_risk",
+      "top_k": 20,
+      "covered_focus": false,
+      "covered_boiler": false,
+      "matched_chunk_id": null
+    },
+    {
+      "contract_id": "cg-0019",
+      "clause_id": "cg-0019#0015",
+      "risk_type": "ip_ownership_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第一百二十三条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0019",
+      "clause_id": "cg-0019#0025",
+      "risk_type": "payment_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "enterprise_bankruptcy_law:第五十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0020",
+      "clause_id": "cg-0020#0001",
+      "risk_type": "authorization_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一百六十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0020",
+      "clause_id": "cg-0020#0005",
+      "risk_type": "disclaimer_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百零六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0020",
+      "clause_id": "cg-0020#0015",
+      "risk_type": "applicable_law_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第一百七十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0020",
+      "clause_id": "cg-0020#0020",
+      "risk_type": "credential_risk",
+      "top_k": 20,
+      "covered_focus": false,
+      "covered_boiler": false,
+      "matched_chunk_id": null
+    },
+    {
+      "contract_id": "cg-0021",
+      "clause_id": "cg-0021#0005",
+      "risk_type": "termination_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "labor_contract_law:第三十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0021",
+      "clause_id": "cg-0021#0008",
+      "risk_type": "delivery_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第六百零四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0021",
+      "clause_id": "cg-0021#0009",
+      "risk_type": "credential_risk",
+      "top_k": 20,
+      "covered_focus": false,
+      "covered_boiler": false,
+      "matched_chunk_id": null
+    },
+    {
+      "contract_id": "cg-0021",
+      "clause_id": "cg-0021#0017",
+      "risk_type": "disclaimer_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百零六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0021",
+      "clause_id": "cg-0021#0022",
+      "risk_type": "applicable_law_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第一百七十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0022",
+      "clause_id": "cg-0022#0004",
+      "risk_type": "qualification_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0022",
+      "clause_id": "cg-0022#0006",
+      "risk_type": "breach_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百八十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0022",
+      "clause_id": "cg-0022#0012",
+      "risk_type": "credential_risk",
+      "top_k": 20,
+      "covered_focus": false,
+      "covered_boiler": false,
+      "matched_chunk_id": null
+    },
+    {
+      "contract_id": "cg-0022",
+      "clause_id": "cg-0022#0026",
+      "risk_type": "acceptance_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第七百九十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0023",
+      "clause_id": "cg-0023#0005",
+      "risk_type": "force_majeure_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百九十条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0023",
+      "clause_id": "cg-0023#0020",
+      "risk_type": "breach_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第五百八十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0023",
+      "clause_id": "cg-0023#0022",
+      "risk_type": "export_control_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_procedure_law:第二条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0023",
+      "clause_id": "cg-0023#0026",
+      "risk_type": "data_processing_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一千二百二十六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0024",
+      "clause_id": "cg-0024#0003",
+      "risk_type": "termination_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "labor_contract_law:第三十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0024",
+      "clause_id": "cg-0024#0009",
+      "risk_type": "data_processing_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一千二百二十六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0024",
+      "clause_id": "cg-0024#0023",
+      "risk_type": "delivery_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第六百零四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0024",
+      "clause_id": "cg-0024#0026",
+      "risk_type": "jurisdiction_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_procedure_law:第三十四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0025",
+      "clause_id": "cg-0025#0018",
+      "risk_type": "delivery_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第六百零四条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0025",
+      "clause_id": "cg-0025#0021",
+      "risk_type": "cross_border_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "securities_law:第一百七十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0025",
+      "clause_id": "cg-0025#0025",
+      "risk_type": "acceptance_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "civil_code:第七百九十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0025",
+      "clause_id": "cg-0025#0026",
+      "risk_type": "data_processing_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一千二百二十六条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0025",
+      "clause_id": "cg-0025#0030",
+      "risk_type": "payment_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": true,
+      "matched_chunk_id": "enterprise_bankruptcy_law:第五十五条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0026",
+      "clause_id": "cg-0026#0007",
+      "risk_type": "invoice_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_procedure_law:第二百二十九条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0026",
+      "clause_id": "cg-0026#0010",
+      "risk_type": "cross_border_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "securities_law:第一百七十七条:0:S5_context"
+    },
+    {
+      "contract_id": "cg-0026",
+      "clause_id": "cg-0026#0013",
+      "risk_type": "data_processing_risk",
+      "top_k": 20,
+      "covered_focus": true,
+      "covered_boiler": false,
+      "matched_chunk_id": "civil_code:第一千二百二十六条:0:S5_context"
+    }
+  ]
+}

@@ -37,12 +37,12 @@ PYTHONPATH='python-agent;.' $PY lab/exp/attribution/e5_retrieval_coverage.py
 | E4 / H4 | ✅ 已离线跑完 | 生成器溯源 + 20条抽检 |
 | E2 / H3 | ⛔ 本沙箱阻塞（DashScope 401） | 脚本就绪，可达环境重跑 |
 | E3 / H2 | ⛔ 本沙箱阻塞（DashScope 401） | 脚本就绪，可达环境重跑；H2 vs H3 暂由 mock-vs-live 天然对照支撑 |
-| E5 / 检索覆盖 | ⛔ 本沙箱阻塞（DashScope 401） | 脚本就绪；离线部分证据见 `docs/attribution-recall-collapse.md` §6 校验3 |
+| E5 / 检索覆盖 | ✅ 已跑（BM25-only 免 key，S5_context） | @100=92.0%（92/100）；结果见 `out/e5/coverage.json` |
 
 ## 重跑前三项校验（用户指令，详见报告 §6）
 1. **E2 纯度**：设计保证 `citations-nonempty ≡ 0`（tools=()→白名单空→引用全剥离）；实证阻塞于 401。
 2. **E3 通路**：✅ 已实证——live 落盘 6/70 findings 为空引用 unverified，schema 允许空引用，E3 ≠ E1。
-3. **检索覆盖**：部分实证——citation_audit 严格支撑率 46.7%、3 类风险召回 0%；完整 top-20 待 E5 在密钥环境跑。
+3. **检索覆盖**：✅ E5 实测（BM25-only 免 key）命中率 @100=92.0%；聚焦查询 vs 含通用词风格见报告 §6 校验3。生产混合检索含 dense（需 key）覆盖只会更高。
 
 ## 设计要点
 - E2 用子类化 `ExpertSpec`（内存覆写 `load_system_prompt`，**不写磁盘**）把工具置空 `tools=()`，仅给条款+风险清单。
