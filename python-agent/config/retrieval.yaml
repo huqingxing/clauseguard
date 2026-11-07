@@ -1,0 +1,59 @@
+# 检索实验台结论 → 生产参数。改完必须重启 python-agent（配置是进程级缓存）。
+# 优先级：进程环境变量 CLAUSEGUARD_RETRIEVAL_* > 仓库根 .env > 本文件 > 代码默认值。
+# 位置由 retrieval/config.py 按 __file__ 推导，不依赖启动时的 CWD。
+# 组号见 lab/out/report.md（矩阵原始数据 lab/out/v1/report.md）。
+
+# 兼容开关：live 走真实 pgvector 法条库；mock 走固定样例语料，仅用于离线演示。
+# 来源：lab/out/report.md 第 15 组（该组是 live 检索链路的选型基准），阶段 6 新增开关。
+mode: live
+
+# 切分策略。第 15 组 S5_context|E3 是报告里 recall@5 最高的组合（0.6146），
+# 策略这一维直接取它的 S5_context：注入「法律名+章节+条号」前缀后 BM25 词汇更可辨。
+# 来源：lab/out/report.md 第 15 组（另见第 13 组 S5_context|E1，recall@5=0.5896）。
+strategy: S5_context
+
+# embedding 档位。报告最优组的 E3 是离线确定性哈希投影（512 维、需本地 127.0.0.1:9997
+# 推理服务），本机无该服务且 512 维写不进 law_chunk.embedding vector(1024) 单列；
+# 报告 §5 也明确所有档位差值 95% CI 含 0、不可作模型选型结论。因此落地取同策略下
+# 唯一真实跑通且已入库的 E1（百炼 text-embedding-v3，1024 维）。
+# 来源：lab/out/report.md 第 13 组（生效组合）；第 15 组作为「未落地最优」留痕。
+embedding: E1
+
+# 两路召回。矩阵 15 组全部 bm25=on，且阶段 2 实测 dense∩bm25 top5 重叠仅 4 条
+# （融合不是无意义拼接）；关掉会退回单路 dense。
+# 来源：lab/out/report.md 第 15 组（配置行 bm25=on）。
+use_bm25: true
+
+# rerank。矩阵 15 组固定 rerank=off；阶段 5 的 gte-rerank-v2 对比尚未产出可复现报告，
+# 且生产检索服务还没有接入 lab/rerank.py 的实现，置 true 会退化成 503。
+# 来源：lab/out/report.md 第 15 组（配置行 rerank=off）。
+use_rerank: false
+
+# 最终返回条数，同时也是 recall@5 / ndcg@10 的 k 口径。
+# 来源：lab/out/report.md 第 15 组（配置行 k=5，指标 recall@5=0.6146）。
+top_k: 5
+
+# 融合方式。rrf 对两路原始量纲不敏感（dense 是余弦相似度、BM25 是无上界分数），
+# 加权融合需要先做 min-max 归一化，矩阵里没有证据表明它更优，故取报告默认。
+# 来源：lab/out/report.md 第 15 组（配置行 融合=rrf(k=60)）。
+fusion: rrf
+
+# RRF 平滑常数；与报告口径一致，改它会让实验台指标与线上不可比。
+# 来源：lab/out/report.md 第 15 组（配置行 融合=rrf(k=60)）。
+fusion_rrf_k: 60
+
+# 加权融合权重（fusion 切成 weighted 时才生效，保留以防口径漂移）。
+# 来源：lab/out/report.md 第 15 组（阶段 2 配置 dense=0.6 / sparse=0.4）。
+fusion_dense_weight: 0.6
+fusion_sparse_weight: 0.4
+
+# 融合候选池。只在某一路排进前 k 的文档不该被另一路的高分救不回来，故取 50 而非 5。
+# 来源：lab/out/report.md 第 15 组（配置行 candidate_k=50）。
+candidate_k: 50
+
+# 知识库 DSN（Postgres + pgvector，不是业务库 MySQL）。本机验收集群在 _pg_tmp/，
+# 生产/他人机器用 CLAUSEGUARD_RETRIEVAL_PG_DSN 覆盖；不写进代码默认值是为了
+# 避免有人拿默认串误连到 5432 上的 LangGraph checkpoint 库。
+# connect_timeout=2 是阶段 6 实测补的：库挂掉时 libpq 默认要等 20~30s 才报错，
+# 一次审查有多次工具检索，整轮会被拖到 130s+；检索是旁路能力，必须快速失败降级。
+pg_dsn: postgresql://clauseguard@127.0.0.1:55432/clauseguard_retrieval?connect_timeout=2

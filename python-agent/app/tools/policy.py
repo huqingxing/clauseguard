@@ -1,7 +1,8 @@
-"""企业内部制度检索工具（mock）。
+"""企业内部制度检索工具。阶段 6 尚未建制度库，live 模式暂共用真实法条索引。
 
-TODO(Stage 7): 替换为真实制度库检索（pgvector 或 Java MCP 工具封装）；接口与候选字段
-保持不变，白名单校验逻辑无需改动。
+为什么宁可复用也不保留 mock：白名单是「本次检索返回集合」的全集，只要还有一个工具
+吐 `policy-00x`，模型就可能引用一个无法回溯到任何语料的假 ID，红线直接破防。
+等制度库建成，只需把 live_payload 换成该库的检索入口，工具契约与白名单不动。
 """
 
 from __future__ import annotations
@@ -9,26 +10,21 @@ from __future__ import annotations
 from langchain_core.tools import tool
 
 from app.tools.corpus import CorpusEntry, candidates_json
+from app.tools.retrieval_backend import live_payload
 
 _MOCK_POLICY_CORPUS: list[CorpusEntry] = [
     {
         "id": "policy-001",
         "article": "《采购合同管理规范》预付款比例条款",
         "title": "预付款比例与扣回机制",
-        "text": (
-            "预付款须与履约进度挂钩，不得超过合同总价的30%，"
-            "并应约定按进度款比例扣回的机制。"
-        ),
+        "text": ("预付款须与履约进度挂钩，不得超过合同总价的30%，并应约定按进度款比例扣回的机制。"),
         "keywords": ["预付", "预付款", "30%", "扣回", "退还"],
     },
     {
         "id": "policy-002",
         "article": "《交付与验收管理办法》验收期条款",
         "title": "验收期下限",
-        "text": (
-            "验收期自到货之日起不得少于10个工作日；"
-            "验收标准须以书面形式确认，禁止单方确定。"
-        ),
+        "text": ("验收期自到货之日起不得少于10个工作日；验收标准须以书面形式确认，禁止单方确定。"),
         "keywords": ["验收", "检验", "到货", "标准", "异议"],
     },
     {
@@ -46,8 +42,7 @@ _MOCK_POLICY_CORPUS: list[CorpusEntry] = [
         "article": "《合同审查指引》交付期限条款",
         "title": "交付期限确定性",
         "text": (
-            "交付期限应约定具体日期或可计算的确定性条件，"
-            "禁止使用「尽快」「另行通知」等不确定表述。"
+            "交付期限应约定具体日期或可计算的确定性条件，禁止使用「尽快」「另行通知」等不确定表述。"
         ),
         "keywords": ["交付", "期限", "尽快", "通知", "时间"],
     },
@@ -55,10 +50,7 @@ _MOCK_POLICY_CORPUS: list[CorpusEntry] = [
         "id": "policy-005",
         "article": "《供应商管理规范》违约责任条款",
         "title": "违约金比例下限",
-        "text": (
-            "逾期违约金比例原则上不低于日万分之三，"
-            "并应设置以合同总价为基准的责任上限。"
-        ),
+        "text": ("逾期违约金比例原则上不低于日万分之三，并应设置以合同总价为基准的责任上限。"),
         "keywords": ["违约金", "逾期", "比例", "上限", "违约"],
     },
 ]
@@ -71,4 +63,5 @@ def mock_search_policy(query: str) -> str:
     Args:
         query: 条款原文或关键词
     """
-    return candidates_json(_MOCK_POLICY_CORPUS, query)
+    payload = live_payload(query)
+    return payload if payload is not None else candidates_json(_MOCK_POLICY_CORPUS, query)

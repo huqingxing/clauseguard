@@ -71,6 +71,30 @@ curl localhost:8000/healthz                     # {"status":"ok","service":"pyth
 cd web && npm install && npm run dev            # 前端 5173（可选）
 ```
 
+### python-agent 启动方式（PyCharm / 脚本，不想开终端的人）
+
+`deploy/dev/start-agent-live.ps1`（真实 LLM）与 `start-agent-mock.ps1`（确定性替身）已封装好全部
+非密钥变量，在 `python-agent/` 目录下 PowerShell 直接运行即可。PyCharm 等价配置：
+`Run → Edit Configurations → + Python`：
+
+- **Module name**：`uvicorn`（不是脚本路径）
+- **Parameters**：`app.main:app --host 127.0.0.1 --port 8000`
+- **Working directory**：`…/clauseguard/python-agent`
+- **Environment variables**（逐条加，Key=Value，**不写密钥**）：
+
+  | Name | Value |
+  | --- | --- |
+  | `CLAUSEGUARD_AGENT_MODEL_BACKEND` | `live`（演示/评测用 `mock`） |
+  | `CLAUSEGUARD_AGENT_LLM_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+  | `CLAUSEGUARD_AGENT_LLM_MODEL` | `qwen-plus` |
+  | `NO_PROXY` | `localhost,127.0.0.1` |
+  | `HTTP_PROXY` | （空） |
+  | `HTTPS_PROXY` | （空） |
+
+> **配置加载优先级（Stage 15 已落地）**：进程环境变量 > `.env` 文件 > 代码默认值。
+> `.env` 由代码按文件位置定位到仓库根 `clauseguard/.env`，无论从哪个目录启动都读同一份；
+> 密钥仅来自系统/用户环境变量 `CLAUSEGUARD_AGENT_LLM_API_KEY`，绝不进 `.env`、脚本或代码。
+
 ### 第一次跑通的自检清单（约 30 分钟，逐条看输出再往下走）
 
 | # | 命令 | 期望输出 | 不对怎么办 |

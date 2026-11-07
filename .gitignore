@@ -32,3 +32,14 @@ deploy/demo/*.docx
 
 # 本地上传的合同文件（运行时产物，Java 的 ./uploads）
 java-service/uploads/
+
+# 检索实验台的本地 pgvector 验收集群（独立端口 55432，可随时删除重建）
+_pg_tmp/
+
+# Python 字节码（lab/ 与 python-agent/ 各自 import 时都会生成）
+__pycache__/
+*.py[cod]
+
+# 阶段 4 矩阵向量缓存（.npy 单个 label 约 130MB，可由 --label 重跑重建；
+# report.md 与 metrics.json 是验收证据，保留可见）
+lab/out/*/cache/

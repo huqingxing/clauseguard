@@ -685,6 +685,10 @@ def create_app(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    # 检索实验台端点独立于审查图：懒加载，未配置检索库时不影响 /v1/runs 链路。
+    from retrieval.api import router as retrieval_router
+
+    app.include_router(retrieval_router)
     return app
 
 

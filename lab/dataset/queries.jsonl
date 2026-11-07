@@ -1,0 +1,80 @@
+{"qid": "q001", "query": "完全民事行为能力人的认定标准是什么", "gold": ["civil_code:第十八条:0:S1_whole"], "scene": "subject", "type": "concept"}
+{"qid": "q002", "query": "合作方派来的签约人十七周岁、靠自己的工资生活，他能独立签这份采购合同吗", "gold": ["civil_code:第十八条:0:S1_whole"], "scene": "subject", "type": "scene"}
+{"qid": "q003", "query": "多大岁数才能自己签合同啊", "gold": ["civil_code:第十八条:0:S1_whole"], "scene": "subject", "type": "colloquial"}
+{"qid": "q004", "query": "法人独立享有民事权利和承担民事义务的能力如何界定", "gold": ["civil_code:第五十七条:0:S1_whole"], "scene": "subject", "type": "concept"}
+{"qid": "q005", "query": "供应商是家有限责任公司，签约时我方应当以谁的名义主张合同权利", "gold": ["civil_code:第五十七条:0:S1_whole"], "scene": "subject", "type": "scene"}
+{"qid": "q006", "query": "公司算不算自己能担责的人", "gold": ["civil_code:第五十七条:0:S1_whole"], "scene": "subject", "type": "colloquial"}
+{"qid": "q007", "query": "法定代表人以法人名义从事民事活动的法律后果由谁承受", "gold": ["civil_code:第六十一条:0:S1_whole"], "scene": "subject", "type": "concept"}
+{"qid": "q008", "query": "对方公司换了法定代表人，前任老总签的框架协议还对公司有效吗", "gold": ["civil_code:第六十一条:0:S1_whole"], "scene": "subject", "type": "scene"}
+{"qid": "q009", "query": "老板签的字公司得认吗", "gold": ["civil_code:第六十一条:0:S1_whole"], "scene": "subject", "type": "colloquial"}
+{"qid": "q010", "query": "股东滥用公司法人独立地位逃避债务时应当承担什么责任", "gold": ["company_law:第二十三条:0:S1_whole"], "scene": "subject", "type": "concept"}
+{"qid": "q011", "query": "债务人是一人公司，股东把公司账户和私人账户混着用，能要求股东一起还钱吗", "gold": ["company_law:第二十三条:0:S1_whole"], "scene": "subject", "type": "scene"}
+{"qid": "q012", "query": "公司没钱了能不能找股东要", "gold": ["company_law:第二十三条:0:S1_whole"], "scene": "subject", "type": "colloquial"}
+{"qid": "q013", "query": "人身保险与财产保险对保险利益的时间要求有何不同", "gold": ["insurance_law:第十二条:0:S1_whole"], "scene": "subject", "type": "concept"}
+{"qid": "q014", "query": "合同的内容一般应当包括哪些条款", "gold": ["civil_code:第四百七十条:0:S1_whole"], "scene": "commercial", "type": "concept"}
+{"qid": "q015", "query": "我们要拟一份设备采购合同，法务要求必备条款写全，具体得列哪几项", "gold": ["civil_code:第四百七十条:0:S1_whole"], "scene": "commercial", "type": "scene"}
+{"qid": "q016", "query": "合同里都得写点啥才算齐", "gold": ["civil_code:第四百七十条:0:S1_whole"], "scene": "commercial", "type": "colloquial"}
+{"qid": "q017", "query": "提供格式条款的一方对免除或者减轻其责任的条款负有什么义务", "gold": ["civil_code:第四百九十六条:0:S1_whole"], "scene": "commercial", "type": "concept"}
+{"qid": "q018", "query": "平台把免责条款藏在折叠协议里没有提示，条款里还排除了用户主要权利，这两类条款分别怎么处理", "gold": ["civil_code:第四百九十六条:0:S1_whole", "civil_code:第四百九十七条:0:S1_whole"], "scene": "commercial", "type": "scene"}
+{"qid": "q019", "query": "格式合同里藏着的免责条款算数吗", "gold": ["civil_code:第四百九十六条:0:S1_whole"], "scene": "commercial", "type": "colloquial"}
+{"qid": "q020", "query": "哪些情形下的格式条款无效", "gold": ["civil_code:第四百九十七条:0:S1_whole"], "scene": "commercial", "type": "concept"}
+{"qid": "q021", "query": "合同约定无论任何原因概不退款并排除消费者主要权利，这一条效力如何", "gold": ["civil_code:第四百九十七条:0:S1_whole"], "scene": "commercial", "type": "scene"}
+{"qid": "q022", "query": "霸王条款是不是一律不作数", "gold": ["civil_code:第四百九十七条:0:S1_whole"], "scene": "commercial", "type": "colloquial"}
+{"qid": "q023", "query": "合同履行中的通知协助保密等附随义务是如何规定的", "gold": ["civil_code:第五百零九条:0:S1_whole"], "scene": "commercial", "type": "concept"}
+{"qid": "q024", "query": "卖方交货后拒绝提供安装必需的配合与资料，是否违反诚信原则下的协助义务", "gold": ["civil_code:第五百零九条:0:S1_whole"], "scene": "commercial", "type": "scene"}
+{"qid": "q025", "query": "合同没写的事儿对方就能不管吗", "gold": ["civil_code:第五百零九条:0:S1_whole"], "scene": "commercial", "type": "colloquial"}
+{"qid": "q026", "query": "当事人可以法定解除合同的情形有哪些", "gold": ["civil_code:第五百六十三条:0:S1_whole"], "scene": "commercial", "type": "concept"}
+{"qid": "q027", "query": "合同对价款或者履行地点约定不明确时应当如何确定", "gold": ["civil_code:第五百一十一条:0:S1_whole", "civil_code:第五百一十条:0:S1_whole"], "scene": "commercial", "type": "concept"}
+{"qid": "q028", "query": "违约方应当承担继续履行采取补救措施或者赔偿损失等哪些责任形式", "gold": ["civil_code:第五百七十七条:0:S1_whole"], "scene": "liability", "type": "concept"}
+{"qid": "q029", "query": "软件开发商交付的系统跑不通，我方要求继续修复并赔偿返工损失有没有依据", "gold": ["civil_code:第五百七十七条:0:S1_whole"], "scene": "liability", "type": "scene"}
+{"qid": "q030", "query": "对方不按合同办事能怎么办", "gold": ["civil_code:第五百七十七条:0:S1_whole"], "scene": "liability", "type": "colloquial"}
+{"qid": "q031", "query": "违约损失赔偿额的范围如何界定，是否包括合同履行后可以获得的利益", "gold": ["civil_code:第五百八十四条:0:S1_whole"], "scene": "liability", "type": "concept"}
+{"qid": "q032", "query": "供应商断供导致我方丢了一笔转售订单，主张预期利润能否获得支持", "gold": ["civil_code:第五百八十四条:0:S1_whole"], "scene": "liability", "type": "scene"}
+{"qid": "q033", "query": "对方违约我少赚的钱能要回来吗", "gold": ["civil_code:第五百八十四条:0:S1_whole"], "scene": "liability", "type": "colloquial"}
+{"qid": "q034", "query": "约定的违约金过分高于造成的损失时当事人可以请求如何调整", "gold": ["civil_code:第五百八十五条:0:S1_whole"], "scene": "liability", "type": "concept"}
+{"qid": "q035", "query": "采购合同约定逾期每日按合同总额百分之五付违约金，实际损失很小，法院会支持调减吗", "gold": ["civil_code:第五百八十五条:0:S1_whole", "civil_code:第五百八十四条:0:S1_whole"], "scene": "liability", "type": "scene"}
+{"qid": "q036", "query": "违约金写太高了能不能少赔点", "gold": ["civil_code:第五百八十五条:0:S1_whole"], "scene": "liability", "type": "colloquial"}
+{"qid": "q037", "query": "定金数额的上限是如何规定的", "gold": ["civil_code:第五百八十六条:0:S1_whole"], "scene": "liability", "type": "concept"}
+{"qid": "q038", "query": "总价一百万的合同收了三十万定金，超出部分有没有定金效力", "gold": ["civil_code:第五百八十六条:0:S1_whole"], "scene": "liability", "type": "scene"}
+{"qid": "q039", "query": "定金最多能收多少", "gold": ["civil_code:第五百八十六条:0:S1_whole"], "scene": "liability", "type": "colloquial"}
+{"qid": "q040", "query": "同时约定违约金和定金时守约方应当如何主张", "gold": ["civil_code:第五百八十八条:0:S1_whole", "civil_code:第五百八十五条:0:S1_whole", "civil_code:第五百八十七条:0:S1_whole"], "scene": "liability", "type": "concept"}
+{"qid": "q041", "query": "因不可抗力不能履行合同时责任免除与通知义务如何规定", "gold": ["civil_code:第五百九十条:0:S1_whole"], "scene": "liability", "type": "concept"}
+{"qid": "q042", "query": "民法典规定的知识产权客体包括哪些", "gold": ["civil_code:第一百二十三条:0:S1_whole"], "scene": "ip", "type": "concept"}
+{"qid": "q043", "query": "客户把自研算法和源码当商业秘密要求写进保密清单，属于法定权利客体吗", "gold": ["civil_code:第一百二十三条:0:S1_whole"], "scene": "ip", "type": "scene"}
+{"qid": "q044", "query": "法律保护的知识产权都有啥", "gold": ["civil_code:第一百二十三条:0:S1_whole"], "scene": "ip", "type": "colloquial"}
+{"qid": "q045", "query": "职务技术成果的使用权与转让权归属于谁", "gold": ["civil_code:第八百四十七条:0:S1_whole"], "scene": "ip", "type": "concept"}
+{"qid": "q046", "query": "员工用公司设备和项目时间做出一套算法，公司能否直接对外签技术转让合同", "gold": ["civil_code:第八百四十七条:0:S1_whole", "civil_code:第八百四十八条:0:S1_whole"], "scene": "ip", "type": "scene"}
+{"qid": "q047", "query": "上班做的发明算谁的", "gold": ["civil_code:第八百四十七条:0:S1_whole"], "scene": "ip", "type": "colloquial"}
+{"qid": "q048", "query": "委托开发完成的发明创造申请专利的权利属于哪一方", "gold": ["civil_code:第八百五十九条:0:S1_whole"], "scene": "ip", "type": "concept"}
+{"qid": "q049", "query": "我们出资委托研究所开发新装置且没约定成果归属，专利权归谁、我方能不能实施", "gold": ["civil_code:第八百五十九条:0:S1_whole"], "scene": "ip", "type": "scene"}
+{"qid": "q050", "query": "花钱请人做发明，专利算谁的", "gold": ["civil_code:第八百五十九条:0:S1_whole"], "scene": "ip", "type": "colloquial"}
+{"qid": "q051", "query": "侵犯商业秘密的行为类型与商业秘密的构成要件是什么", "gold": ["anti_unfair_competition_law:第九条:0:S1_whole"], "scene": "ip", "type": "concept"}
+{"qid": "q052", "query": "前员工把公司客户报价表带到新东家使用，是否构成侵犯商业秘密", "gold": ["anti_unfair_competition_law:第九条:0:S1_whole"], "scene": "ip", "type": "scene"}
+{"qid": "q053", "query": "把老东家的客户名单带走算违法吗", "gold": ["anti_unfair_competition_law:第九条:0:S1_whole"], "scene": "ip", "type": "colloquial"}
+{"qid": "q054", "query": "竞业限制的人员范围与最长期限是如何规定的", "gold": ["labor_contract_law:第二十四条:0:S1_whole"], "scene": "ip", "type": "concept"}
+{"qid": "q055", "query": "个人信息在法律上如何定义并包含哪些类型", "gold": ["civil_code:第一千零三十四条:0:S1_whole"], "scene": "data", "type": "concept"}
+{"qid": "q056", "query": "应用收集用户身份证件号码行踪信息和健康数据，这些是否属于个人信息", "gold": ["civil_code:第一千零三十四条:0:S1_whole"], "scene": "data", "type": "scene"}
+{"qid": "q057", "query": "啥算个人信息啊", "gold": ["civil_code:第一千零三十四条:0:S1_whole"], "scene": "data", "type": "colloquial"}
+{"qid": "q058", "query": "处理个人信息应当遵循哪些原则并符合哪些条件", "gold": ["civil_code:第一千零三十五条:0:S1_whole"], "scene": "data", "type": "concept"}
+{"qid": "q059", "query": "合作方要把共享的用户数据用于合同约定之外的新用途，需要重新满足什么条件", "gold": ["civil_code:第一千零三十五条:0:S1_whole"], "scene": "data", "type": "scene"}
+{"qid": "q060", "query": "拿用户信息用之前得满足啥条件", "gold": ["civil_code:第一千零三十五条:0:S1_whole"], "scene": "data", "type": "colloquial"}
+{"qid": "q061", "query": "自然人对其个人信息享有哪些查阅复制更正与删除的权利", "gold": ["civil_code:第一千零三十七条:0:S1_whole"], "scene": "data", "type": "concept"}
+{"qid": "q062", "query": "用户发现平台留的手机号是错的，要求更正并在注销后彻底删档；平台还把信息泄露了，各有什么责任", "gold": ["civil_code:第一千零三十七条:0:S1_whole", "civil_code:第一千零三十八条:0:S1_whole"], "scene": "data", "type": "scene"}
+{"qid": "q063", "query": "我能要求把我的信息删掉吗", "gold": ["civil_code:第一千零三十七条:0:S1_whole"], "scene": "data", "type": "colloquial"}
+{"qid": "q064", "query": "信息处理者对个人信息负有哪些安全保护与泄露告知义务", "gold": ["civil_code:第一千零三十八条:0:S1_whole"], "scene": "data", "type": "concept"}
+{"qid": "q065", "query": "系统被拖库后我方打算内部悄悄修复，不通知用户也不上报主管部门是否合规", "gold": ["civil_code:第一千零三十八条:0:S1_whole"], "scene": "data", "type": "scene"}
+{"qid": "q066", "query": "数据泄露了要不要告诉用户", "gold": ["civil_code:第一千零三十八条:0:S1_whole"], "scene": "data", "type": "colloquial"}
+{"qid": "q067", "query": "民事诉讼法规定的证据种类中电子数据处于什么地位", "gold": ["civil_procedure_law:第六十六条:0:S1_whole"], "scene": "data", "type": "concept"}
+{"qid": "q068", "query": "广告内容的真实性由谁负责且法律禁止哪些内容", "gold": ["advertising_law:第四条:0:S1_whole"], "scene": "compliance", "type": "concept"}
+{"qid": "q069", "query": "市场部要在落地页写全网销量第一但没有权威统计支撑，能不能发布", "gold": ["advertising_law:第四条:0:S1_whole", "advertising_law:第九条:0:S1_whole", "advertising_law:第二十八条:0:S1_whole"], "scene": "compliance", "type": "scene"}
+{"qid": "q070", "query": "广告能随便吹吗", "gold": ["advertising_law:第四条:0:S1_whole"], "scene": "compliance", "type": "colloquial"}
+{"qid": "q071", "query": "构成虚假广告的法定情形有哪些", "gold": ["advertising_law:第二十八条:0:S1_whole"], "scene": "compliance", "type": "concept"}
+{"qid": "q072", "query": "招商页引用了一份无法验证的行业调查报告来证明效果，是否属于虚假广告", "gold": ["advertising_law:第二十八条:0:S1_whole"], "scene": "compliance", "type": "scene"}
+{"qid": "q073", "query": "哪些广告算虚假广告", "gold": ["advertising_law:第二十八条:0:S1_whole"], "scene": "compliance", "type": "colloquial"}
+{"qid": "q074", "query": "哪些广告在发布前必须由广告审查机关进行审查", "gold": ["advertising_law:第四十六条:0:S1_whole"], "scene": "compliance", "type": "concept"}
+{"qid": "q075", "query": "客户要投一组保健食品和医疗器械广告，还没送审就要求上线可以吗", "gold": ["advertising_law:第四十六条:0:S1_whole"], "scene": "compliance", "type": "scene"}
+{"qid": "q076", "query": "保健品的广告能直接发吗", "gold": ["advertising_law:第四十六条:0:S1_whole"], "scene": "compliance", "type": "colloquial"}
+{"qid": "q077", "query": "信息披露义务人披露的信息应当符合哪些要求", "gold": ["securities_law:第七十八条:0:S1_whole"], "scene": "compliance", "type": "concept"}
+{"qid": "q078", "query": "上市公司拟在境外先发一份重大事项公告境内隔天再发，公告里还有重大遗漏，是否合规、会有什么后果", "gold": ["securities_law:第七十八条:0:S1_whole", "securities_law:第八十五条:0:S1_whole"], "scene": "compliance", "type": "scene"}
+{"qid": "q079", "query": "上市公司发公告有啥硬要求", "gold": ["securities_law:第七十八条:0:S1_whole"], "scene": "compliance", "type": "colloquial"}
+{"qid": "q080", "query": "经营者不得实施哪些虚假或者引人误解的商业宣传行为", "gold": ["anti_unfair_competition_law:第八条:0:S1_whole"], "scene": "compliance", "type": "concept"}

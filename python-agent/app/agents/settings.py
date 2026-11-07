@@ -9,9 +9,15 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 与 app/config.py 一致：按本文件位置定位仓库根 .env（而非 CWD 相对），保证无论从哪个目录启动
+# 都读同一份根 .env。前缀 clauseguard_agent_ 保持不变，.env 里的键必须写成带前缀形式
+# （如 CLAUSEGUARD_AGENT_LLM_MODEL=...）。优先级：进程环境变量 > .env 文件 > 代码默认值。
+ENV_FILE = Path(__file__).resolve().parents[3] / ".env"  # 指向仓库根 .env
 
 ExecutionMode = Literal["parallel", "serial"]
 
@@ -19,7 +25,9 @@ ExecutionMode = Literal["parallel", "serial"]
 class AgentSettings(BaseSettings):
     """LLM 路由与编排配置；环境变量前缀 CLAUSEGUARD_AGENT_（如 CLAUSEGUARD_AGENT_LLM_MODEL）。"""
 
-    model_config = SettingsConfigDict(env_prefix="clauseguard_agent_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="clauseguard_agent_", env_file=ENV_FILE, extra="ignore"
+    )
 
     llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str = ""

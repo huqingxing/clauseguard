@@ -1,0 +1,958 @@
+{
+  "label": "switch_check",
+  "seed": 20261107,
+  "generated_by": "lab.run",
+  "provider_mode": "deterministic",
+  "dataset": {
+    "path": "lab/dataset/queries.jsonl",
+    "sha256": "538bf7866028a99213e59c0d9044e496fe085f3cd9ff9e175dca541d9b50addf",
+    "n": 80
+  },
+  "config": {
+    "strategies": [
+      "S1_whole"
+    ],
+    "embeddings": [
+      "E1"
+    ],
+    "rerank": "on",
+    "bm25": "off",
+    "k": 5,
+    "candidate_k": 50,
+    "mrr_k": 10,
+    "ndcg_k": 10,
+    "match_mode": "article",
+    "fusion": "rrf(k=60)",
+    "pg_dsn": ""
+  },
+  "combinations": [
+    {
+      "key": "S1_whole|E1",
+      "strategy": "S1_whole",
+      "embedding": "E1",
+      "status": "ok",
+      "error": null,
+      "n_queries": 80,
+      "n_chunks": 2584,
+      "index_ms": 485.786,
+      "index_breakdown": {
+        "chunk_ms": 40.108,
+        "vector_ms": 426.282,
+        "query_vector_ms": 15.155,
+        "bm25_ms": 0.0
+      },
+      "cache_hit": false,
+      "embedding_usage": {
+        "source": "deterministic-hash",
+        "chars": 247123,
+        "tokens": 0,
+        "requests": 0,
+        "retries": 0,
+        "cache_hit": false,
+        "cost_cny": 0.0,
+        "estimated_tokens_if_live": 492459,
+        "note": "离线哈希投影：无 API 调用、无 token、无费用"
+      },
+      "provider": {
+        "code": "E1",
+        "model": "text-embedding-v3",
+        "dim": 1024,
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "mode": "deterministic",
+        "ngrams": [
+          2,
+          3
+        ],
+        "seed_tag": "cg-e1-char23",
+        "fingerprint": "94af49cd633d895b"
+      },
+      "summary": {
+        "k": 5,
+        "mrr_k": 10,
+        "ndcg_k": 10,
+        "mode": "article",
+        "n": 80,
+        "overall": {
+          "n": 80.0,
+          "hit_rate": 0.575,
+          "recall": 0.5708333333333333,
+          "mrr": 0.4645833333333333,
+          "ndcg": 0.48814208871306397,
+          "latency_ms_mean": 1.5695362475526053,
+          "latency_ms_p50": 1.5287999995052814,
+          "latency_ms_max": 2.83140002284199,
+          "index_ms": 485.7863999786787
+        },
+        "by_scene": {
+          "commercial": {
+            "n": 14.0,
+            "hit_rate": 0.5714285714285714,
+            "recall": 0.5714285714285714,
+            "mrr": 0.4523809523809524,
+            "ndcg": 0.48298996479592254
+          },
+          "compliance": {
+            "n": 13.0,
+            "hit_rate": 0.46153846153846156,
+            "recall": 0.46153846153846156,
+            "mrr": 0.38461538461538464,
+            "ndcg": 0.4047584236263781
+          },
+          "data": {
+            "n": 13.0,
+            "hit_rate": 0.38461538461538464,
+            "recall": 0.38461538461538464,
+            "mrr": 0.3333333333333333,
+            "ndcg": 0.34615384615384615
+          },
+          "ip": {
+            "n": 13.0,
+            "hit_rate": 0.6923076923076923,
+            "recall": 0.6923076923076923,
+            "mrr": 0.5128205128205129,
+            "ndcg": 0.558604577472532
+          },
+          "liability": {
+            "n": 14.0,
+            "hit_rate": 0.7857142857142857,
+            "recall": 0.7619047619047619,
+            "mrr": 0.6488095238095238,
+            "ndcg": 0.6574415902836801
+          },
+          "subject": {
+            "n": 13.0,
+            "hit_rate": 0.5384615384615384,
+            "recall": 0.5384615384615384,
+            "mrr": 0.4423076923076923,
+            "ndcg": 0.46627740858806543
+          }
+        },
+        "by_type": {
+          "colloquial": {
+            "n": 24.0,
+            "hit_rate": 0.3333333333333333,
+            "recall": 0.3333333333333333,
+            "mrr": 0.125,
+            "ndcg": 0.17725593236921497
+          },
+          "concept": {
+            "n": 32.0,
+            "hit_rate": 0.90625,
+            "recall": 0.8958333333333334,
+            "mrr": 0.8333333333333334,
+            "ndcg": 0.8446006295041105
+          },
+          "scene": {
+            "n": 24.0,
+            "hit_rate": 0.375,
+            "recall": 0.375,
+            "mrr": 0.3125,
+            "ndcg": 0.3237501906688509
+          }
+        },
+        "per_query": [
+          {
+            "qid": "q001",
+            "scene": "subject",
+            "type": "concept",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.8218000186607242
+          },
+          {
+            "qid": "q002",
+            "scene": "subject",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.6180999809876084
+          },
+          {
+            "qid": "q003",
+            "scene": "subject",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.4055999927222729
+          },
+          {
+            "qid": "q004",
+            "scene": "subject",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.2959000305272639
+          },
+          {
+            "qid": "q005",
+            "scene": "subject",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 2.021299966145307
+          },
+          {
+            "qid": "q006",
+            "scene": "subject",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 2.83140002284199
+          },
+          {
+            "qid": "q007",
+            "scene": "subject",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.5767000149935484
+          },
+          {
+            "qid": "q008",
+            "scene": "subject",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.7490999889560044
+          },
+          {
+            "qid": "q009",
+            "scene": "subject",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.9518000190146267
+          },
+          {
+            "qid": "q010",
+            "scene": "subject",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.5799999819137156
+          },
+          {
+            "qid": "q011",
+            "scene": "subject",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 1.730100018903613
+          },
+          {
+            "qid": "q012",
+            "scene": "subject",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.25,
+            "ndcg": 0.43067655807339306,
+            "latency_ms": 1.7833999590948224
+          },
+          {
+            "qid": "q013",
+            "scene": "subject",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 2.294600009918213
+          },
+          {
+            "qid": "q014",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.4673999976366758
+          },
+          {
+            "qid": "q015",
+            "scene": "commercial",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.5318000223487616
+          },
+          {
+            "qid": "q016",
+            "scene": "commercial",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.677999971434474
+          },
+          {
+            "qid": "q017",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.575400005094707
+          },
+          {
+            "qid": "q018",
+            "scene": "commercial",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.2716000201180577
+          },
+          {
+            "qid": "q019",
+            "scene": "commercial",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 1.7813000013120472
+          },
+          {
+            "qid": "q020",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.332899963017553
+          },
+          {
+            "qid": "q021",
+            "scene": "commercial",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 1.4889999874867499
+          },
+          {
+            "qid": "q022",
+            "scene": "commercial",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.2587999808602035
+          },
+          {
+            "qid": "q023",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.5670000575482845
+          },
+          {
+            "qid": "q024",
+            "scene": "commercial",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.505899999756366
+          },
+          {
+            "qid": "q025",
+            "scene": "commercial",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.4163999585434794
+          },
+          {
+            "qid": "q026",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.3333333333333333,
+            "ndcg": 0.5,
+            "latency_ms": 1.4611000078730285
+          },
+          {
+            "qid": "q027",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.5224000089801848
+          },
+          {
+            "qid": "q028",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.5645999810658395
+          },
+          {
+            "qid": "q029",
+            "scene": "liability",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.3508000411093235
+          },
+          {
+            "qid": "q030",
+            "scene": "liability",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.394700026139617
+          },
+          {
+            "qid": "q031",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.3081000070087612
+          },
+          {
+            "qid": "q032",
+            "scene": "liability",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.3419999741017818
+          },
+          {
+            "qid": "q033",
+            "scene": "liability",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.25,
+            "ndcg": 0.43067655807339306,
+            "latency_ms": 1.845399965532124
+          },
+          {
+            "qid": "q034",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.6299000126309693
+          },
+          {
+            "qid": "q035",
+            "scene": "liability",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 0.8772153153380493,
+            "latency_ms": 1.5863999724388123
+          },
+          {
+            "qid": "q036",
+            "scene": "liability",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 1.3918000040575862
+          },
+          {
+            "qid": "q037",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.1901999823749065
+          },
+          {
+            "qid": "q038",
+            "scene": "liability",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.2338999658823013
+          },
+          {
+            "qid": "q039",
+            "scene": "liability",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.3333333333333333,
+            "ndcg": 0.5,
+            "latency_ms": 1.1002999963238835
+          },
+          {
+            "qid": "q040",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 0.6666666666666666,
+            "mrr": 1.0,
+            "ndcg": 0.7653606369886217,
+            "latency_ms": 1.893899985589087
+          },
+          {
+            "qid": "q041",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.4615000109188259
+          },
+          {
+            "qid": "q042",
+            "scene": "ip",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.201300008688122
+          },
+          {
+            "qid": "q043",
+            "scene": "ip",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.4597999979741871
+          },
+          {
+            "qid": "q044",
+            "scene": "ip",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.3333333333333333,
+            "ndcg": 0.5,
+            "latency_ms": 1.533099974039942
+          },
+          {
+            "qid": "q045",
+            "scene": "ip",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.6379000153392553
+          },
+          {
+            "qid": "q046",
+            "scene": "ip",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.4888000441715121
+          },
+          {
+            "qid": "q047",
+            "scene": "ip",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.5796999796293676
+          },
+          {
+            "qid": "q048",
+            "scene": "ip",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.482499996200204
+          },
+          {
+            "qid": "q049",
+            "scene": "ip",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 1.3289000489749014
+          },
+          {
+            "qid": "q050",
+            "scene": "ip",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.3333333333333333,
+            "ndcg": 0.5,
+            "latency_ms": 1.5257999766618013
+          },
+          {
+            "qid": "q051",
+            "scene": "ip",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 1.7739000031724572
+          },
+          {
+            "qid": "q052",
+            "scene": "ip",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.8244999810121953
+          },
+          {
+            "qid": "q053",
+            "scene": "ip",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.329899998381734
+          },
+          {
+            "qid": "q054",
+            "scene": "ip",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.2790000182576478
+          },
+          {
+            "qid": "q055",
+            "scene": "data",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.3333333333333333,
+            "ndcg": 0.5,
+            "latency_ms": 1.1912999907508492
+          },
+          {
+            "qid": "q056",
+            "scene": "data",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.5804000431671739
+          },
+          {
+            "qid": "q057",
+            "scene": "data",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.4927999582141638
+          },
+          {
+            "qid": "q058",
+            "scene": "data",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.7142000142484903
+          },
+          {
+            "qid": "q059",
+            "scene": "data",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.1573000228963792
+          },
+          {
+            "qid": "q060",
+            "scene": "data",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 2.09650001488626
+          },
+          {
+            "qid": "q061",
+            "scene": "data",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.3397999573498964
+          },
+          {
+            "qid": "q062",
+            "scene": "data",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.2252999586053193
+          },
+          {
+            "qid": "q063",
+            "scene": "data",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.3063999940641224
+          },
+          {
+            "qid": "q064",
+            "scene": "data",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.514800009317696
+          },
+          {
+            "qid": "q065",
+            "scene": "data",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.510599977336824
+          },
+          {
+            "qid": "q066",
+            "scene": "data",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.3063999940641224
+          },
+          {
+            "qid": "q067",
+            "scene": "data",
+            "type": "concept",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.117000007070601
+          },
+          {
+            "qid": "q068",
+            "scene": "compliance",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.673299993854016
+          },
+          {
+            "qid": "q069",
+            "scene": "compliance",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.8859999836422503
+          },
+          {
+            "qid": "q070",
+            "scene": "compliance",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.5323999687097967
+          },
+          {
+            "qid": "q071",
+            "scene": "compliance",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.7807999975048006
+          },
+          {
+            "qid": "q072",
+            "scene": "compliance",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.5420999843627214
+          },
+          {
+            "qid": "q073",
+            "scene": "compliance",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 2.06979998620227
+          },
+          {
+            "qid": "q074",
+            "scene": "compliance",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.7873999895527959
+          },
+          {
+            "qid": "q075",
+            "scene": "compliance",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 2.0118000102229416
+          },
+          {
+            "qid": "q076",
+            "scene": "compliance",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.7588000046089292
+          },
+          {
+            "qid": "q077",
+            "scene": "compliance",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 1.4506999868899584
+          },
+          {
+            "qid": "q078",
+            "scene": "compliance",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.520999998319894
+          },
+          {
+            "qid": "q079",
+            "scene": "compliance",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 1.998000021558255
+          },
+          {
+            "qid": "q080",
+            "scene": "compliance",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 1.7405999824404716
+          }
+        ]
+      }
+    }
+  ]
+}

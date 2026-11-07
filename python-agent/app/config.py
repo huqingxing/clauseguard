@@ -1,16 +1,22 @@
 """集中配置。运行态配置禁止散落在节点或工具里，统一从这里读取。"""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 配置来源唯一化：不再用 CWD 相对路径（env_file=".env" 会随启动目录漂移，导致从
+# python-agent/ 启动时去读一个不存在的 python-agent/.env）。改为按本文件位置定位仓库根
+# .env，无论从哪个目录启动都读同一份。优先级：进程环境变量 > .env 文件 > 代码默认值。
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"  # 指向仓库根 .env
 
 
 class Settings(BaseSettings):
     """环境变量驱动配置；均可在 deploy/docker-compose 与 .env 中覆盖。"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         # 允许按字段名构造（测试注入 exporter/端点的场景），别名只用于读环境变量。

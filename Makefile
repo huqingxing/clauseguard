@@ -9,7 +9,7 @@ EVAL_PY := python-agent/.venv/bin/python
 endif
 
 .PHONY: up down logs gen test-py test-java test-web eval eval-smoke eval-baseline fmt contracts-validate \
-        demo-contract trace-demo bench run-py
+        demo-contract trace-demo bench run-py lab lab-rerank lab-verify
 
 up:
 	@test -f .env || cp .env.example .env
@@ -84,3 +84,35 @@ bench:
 	$(EVAL_PY) -m locust -f deploy/locust/locustfile.py --headless \
 		-u $(USERS) -r $(RATE) -t $(TIME) --host http://127.0.0.1:8000 \
 		--csv eval/out/bench --only-summary
+
+# ---------------- 阶段 4：检索实验台矩阵跑批 ----------------
+# 一条命令跑完 strategy×embedding 矩阵，产出 lab/out/<LABEL>/report.md 与 metrics.json。
+# 不依赖 GNU make 的等价命令（本机未装 make 时用这个）：
+#   cd python-agent && uv run python ../lab/run.py --label $(LABEL)
+# 可选覆盖：make lab LABEL=v1 STRATEGIES=S1_whole,S2_fixed512 EMBEDDINGS=E1,E2,E3 \
+#                  RERANK=off BM25=on K=5 PROVIDER=deterministic
+STRATEGIES ?= S1_whole,S2_fixed512,S3_fixed256,S4_paragraph,S5_context
+EMBEDDINGS ?= E1,E2,E3
+RERANK ?= off
+BM25 ?= on
+K ?= 5
+PROVIDER ?= deterministic
+LAB_ARGS := --strategies $(STRATEGIES) --embeddings $(EMBEDDINGS) --rerank $(RERANK) \
+	--bm25 $(BM25) --k $(K) --provider $(PROVIDER)
+
+lab:
+	cd python-agent && uv run python ../lab/run.py --label $(LABEL) $(LAB_ARGS)
+
+# 阶段 5：固定矩阵最优组合，只切换 rerank on/off；结果写进同一 label 的
+# rerank.json，并由 report.py 自动在 report.md 追加「rerank 收益」节。
+RERANKER ?= live
+RERANK_ARGS := --reranker $(RERANKER)
+
+lab-rerank:
+	cd python-agent && uv run python ../lab/run_rerank.py --label $(LABEL) $(RERANK_ARGS)
+
+# 结构断言；两次重跑比对需额外传 VERIFY_ARGS（见 docs/retrieval-stage5-acceptance.md）。
+lab-verify:
+	cd python-agent && uv run python ../lab/verify.py \
+		--metrics ../lab/out/$(LABEL)/metrics.json \
+		--rerank ../lab/out/$(LABEL)/rerank.json $(VERIFY_ARGS)

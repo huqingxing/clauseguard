@@ -46,6 +46,14 @@ clauseguard:
     # 下游 SSE 调用整体超时；超时才触发熔断计数
     connect-timeout: 5s
     response-timeout: 30s
+  # 阶段 6：law.search 的数据来源。live 转发 Python 真实法条库（默认），mock 回落
+  # 固定样例，仅用于无库/无密钥的离线演示。
+  # 为什么不默认 mock：检索是旁路能力，Python 挂掉时客户端已降级为空 hits + WARN，
+  # 审查不会 500，没理由让线上长期拿假 ID 过 citations 白名单。
+  retrieval:
+    mode: ${CLAUSEGUARD_RETRIEVAL_MODE:live}
+    # 单次 HTTP 硬截止 3s、失败重试 1 次；不宜调大，一轮审查会多次调用检索工具。
+    timeout: 3s
   review:
     # 看门狗（Stage 14）：把「长时间没有任何事件的 RUNNING」自动收敛到 FAILED。
     # 根因是「状态先落 RUNNING，再去开事件流」——流断了状态就永远停在 RUNNING，

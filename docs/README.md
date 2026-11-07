@@ -1,3 +1,5 @@
+> **简历素材**：主导 ClauseGuard 合同审查 RAG 改造与量化评估：搭向量+BM25+RRF 混合检索与 80 条标注集、15 组参数矩阵；用真模型在 30 份合同上做对照实验，证明真实检索提升引用可验证性，但暴露风险召回反降的架构缺陷。
+
 # docs/ 索引
 
 ## ADR（架构决策记录）
@@ -16,6 +18,7 @@
 
 | 阶段 | 主题 | 报告 |
 | --- | --- | --- |
+| 7 | 检索实验台：把检索改进量化到业务指标 | [rag-lab.md](rag-lab.md) |
 | 9 | 中断恢复与事件续接 | [stage9-acceptance.md](stage9-acceptance.md) |
 | 10 | 带批注 Word 回写 | [stage10-acceptance.md](stage10-acceptance.md) |
 | 11 | 增量重审与缓存（token −95%） | [stage11-acceptance.md](stage11-acceptance.md) |

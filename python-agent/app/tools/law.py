@@ -1,8 +1,9 @@
-"""法规检索工具（mock）。
+"""法规检索工具。mock 模式返回固定样例；live 模式（默认）返回 pgvector 真实法条。
 
-TODO(Stage 7): 替换为真实检索——pgvector 向量库或 Java MCP 工具封装；接口保持
-(query: str) -> JSON 字符串不变，候选字段 id/article/title/text/score 不变，
-引用白名单校验逻辑无需改动。
+为什么保留 `mock_` 名字：工具名被 prompt、Inspector 与既有测试按字符串引用，改名等于
+动拓扑之外的契约；阶段 6 用 `clauseguard.retrieval.mode` 决定实现，名字只描述能力。
+接口 (query: str) -> JSON 字符串、候选字段 id/article/title/text/score 一律不变，
+因此引用白名单校验（ADR-0003）零改动。
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 from langchain_core.tools import tool
 
 from app.tools.corpus import CorpusEntry, candidates_json
+from app.tools.retrieval_backend import live_payload
 
 _MOCK_LAW_CORPUS: list[CorpusEntry] = [
     {
@@ -106,4 +108,5 @@ def mock_search_law(query: str) -> str:
     Args:
         query: 条款原文或关键词
     """
-    return candidates_json(_MOCK_LAW_CORPUS, query)
+    payload = live_payload(query)
+    return payload if payload is not None else candidates_json(_MOCK_LAW_CORPUS, query)

@@ -1,0 +1,1136 @@
+{
+  "label": "live_check",
+  "seed": 20261107,
+  "generated_by": "lab.run",
+  "provider_mode": "live",
+  "dataset": {
+    "path": "lab/dataset/queries.jsonl",
+    "sha256": "538bf7866028a99213e59c0d9044e496fe085f3cd9ff9e175dca541d9b50addf",
+    "n": 80
+  },
+  "config": {
+    "strategies": [
+      "S1_whole",
+      "S2_fixed512"
+    ],
+    "embeddings": [
+      "E1",
+      "E2",
+      "E3"
+    ],
+    "rerank": "off",
+    "bm25": "on",
+    "k": 5,
+    "candidate_k": 50,
+    "mrr_k": 10,
+    "ndcg_k": 10,
+    "match_mode": "article",
+    "fusion": "rrf(k=60)",
+    "pg_dsn": "postgresql://clauseguard@127.0.0.1:55432/clauseguard_retrieval"
+  },
+  "combinations": [
+    {
+      "key": "S1_whole|E1",
+      "strategy": "S1_whole",
+      "embedding": "E1",
+      "status": "ok",
+      "error": null,
+      "n_queries": 80,
+      "n_chunks": 2584,
+      "index_ms": 4459.941,
+      "index_breakdown": {
+        "chunk_ms": 39.062,
+        "vector_ms": 1005.995,
+        "query_vector_ms": 2259.9,
+        "bm25_ms": 1150.547
+      },
+      "cache_hit": false,
+      "embedding_usage": {
+        "source": "pg-stored-dashscope",
+        "chars": 248069,
+        "tokens": 1095,
+        "requests": 10,
+        "retries": 0,
+        "cache_hit": false,
+        "cost_cny": 0.0,
+        "estimated_tokens_if_live": 0,
+        "note": "chunk 向量来自阶段 2 已入库的真实百炼结果"
+      },
+      "provider": {
+        "code": "E1",
+        "model": "text-embedding-v3",
+        "dim": 1024,
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "mode": "live",
+        "ngrams": [
+          2,
+          3
+        ],
+        "seed_tag": "cg-e1-char23",
+        "fingerprint": "8571f08f51dbd724"
+      },
+      "summary": {
+        "k": 5,
+        "mrr_k": 10,
+        "ndcg_k": 10,
+        "mode": "article",
+        "n": 80,
+        "overall": {
+          "n": 80.0,
+          "hit_rate": 0.775,
+          "recall": 0.7625,
+          "mrr": 0.6216666666666667,
+          "ndcg": 0.6523995013140719,
+          "latency_ms_mean": 5.738601249322528,
+          "latency_ms_p50": 5.897899973206222,
+          "latency_ms_max": 9.470899996813387,
+          "index_ms": 4459.940699976869
+        },
+        "by_scene": {
+          "commercial": {
+            "n": 14.0,
+            "hit_rate": 0.8571428571428571,
+            "recall": 0.8214285714285714,
+            "mrr": 0.41547619047619044,
+            "ndcg": 0.5114990257379554
+          },
+          "compliance": {
+            "n": 13.0,
+            "hit_rate": 0.7692307692307693,
+            "recall": 0.7307692307692307,
+            "mrr": 0.6923076923076923,
+            "ndcg": 0.6936755816004615
+          },
+          "data": {
+            "n": 13.0,
+            "hit_rate": 0.8461538461538461,
+            "recall": 0.8461538461538461,
+            "mrr": 0.7692307692307693,
+            "ndcg": 0.7799288324985357
+          },
+          "ip": {
+            "n": 13.0,
+            "hit_rate": 0.7692307692307693,
+            "recall": 0.7692307692307693,
+            "mrr": 0.5897435897435898,
+            "ndcg": 0.6355276543956089
+          },
+          "liability": {
+            "n": 14.0,
+            "hit_rate": 0.7857142857142857,
+            "recall": 0.7857142857142857,
+            "mrr": 0.7321428571428571,
+            "ndcg": 0.7393140962301129
+          },
+          "subject": {
+            "n": 13.0,
+            "hit_rate": 0.6153846153846154,
+            "recall": 0.6153846153846154,
+            "mrr": 0.5384615384615384,
+            "ndcg": 0.558604577472532
+          }
+        },
+        "by_type": {
+          "colloquial": {
+            "n": 24.0,
+            "hit_rate": 0.625,
+            "recall": 0.625,
+            "mrr": 0.4215277777777778,
+            "ndcg": 0.4725520158164069
+          },
+          "concept": {
+            "n": 32.0,
+            "hit_rate": 1.0,
+            "recall": 1.0,
+            "mrr": 0.9244791666666666,
+            "ndcg": 0.9435167520380097
+          },
+          "scene": {
+            "n": 24.0,
+            "hit_rate": 0.625,
+            "recall": 0.5833333333333334,
+            "mrr": 0.41805555555555557,
+            "ndcg": 0.44409065251315316
+          }
+        },
+        "per_query": [
+          {
+            "qid": "q001",
+            "scene": "subject",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.62710000667721
+          },
+          {
+            "qid": "q002",
+            "scene": "subject",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 7.401299953926355
+          },
+          {
+            "qid": "q003",
+            "scene": "subject",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 4.643800028134137
+          },
+          {
+            "qid": "q004",
+            "scene": "subject",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.0255000134930015
+          },
+          {
+            "qid": "q005",
+            "scene": "subject",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 6.224700016900897
+          },
+          {
+            "qid": "q006",
+            "scene": "subject",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 4.343000007793307
+          },
+          {
+            "qid": "q007",
+            "scene": "subject",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.189799983985722
+          },
+          {
+            "qid": "q008",
+            "scene": "subject",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 6.172099965624511
+          },
+          {
+            "qid": "q009",
+            "scene": "subject",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 3.6760999937541783
+          },
+          {
+            "qid": "q010",
+            "scene": "subject",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 7.236899982672185
+          },
+          {
+            "qid": "q011",
+            "scene": "subject",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 8.352100034244359
+          },
+          {
+            "qid": "q012",
+            "scene": "subject",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 3.77509999088943
+          },
+          {
+            "qid": "q013",
+            "scene": "subject",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.99309999961406
+          },
+          {
+            "qid": "q014",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.3333333333333333,
+            "ndcg": 0.5,
+            "latency_ms": 5.629100021906197
+          },
+          {
+            "qid": "q015",
+            "scene": "commercial",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.25,
+            "ndcg": 0.43067655807339306,
+            "latency_ms": 8.610599965322763
+          },
+          {
+            "qid": "q016",
+            "scene": "commercial",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.3333333333333333,
+            "ndcg": 0.5,
+            "latency_ms": 3.58550000237301
+          },
+          {
+            "qid": "q017",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 7.596999988891184
+          },
+          {
+            "qid": "q018",
+            "scene": "commercial",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 0.5,
+            "mrr": 0.25,
+            "ndcg": 0.2640681225725909,
+            "latency_ms": 9.328900021500885
+          },
+          {
+            "qid": "q019",
+            "scene": "commercial",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 4.560200031846762
+          },
+          {
+            "qid": "q020",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 4.387299995869398
+          },
+          {
+            "qid": "q021",
+            "scene": "commercial",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 8.285799995064735
+          },
+          {
+            "qid": "q022",
+            "scene": "commercial",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.2,
+            "ndcg": 0.38685280723454163,
+            "latency_ms": 4.40029997844249
+          },
+          {
+            "qid": "q023",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.25,
+            "ndcg": 0.43067655807339306,
+            "latency_ms": 6.3599999994039536
+          },
+          {
+            "qid": "q024",
+            "scene": "commercial",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.2,
+            "ndcg": 0.38685280723454163,
+            "latency_ms": 8.345699985511601
+          },
+          {
+            "qid": "q025",
+            "scene": "commercial",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 4.236500011757016
+          },
+          {
+            "qid": "q026",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 5.2069000084884465
+          },
+          {
+            "qid": "q027",
+            "scene": "commercial",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.85529998736456
+          },
+          {
+            "qid": "q028",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 7.284099992830306
+          },
+          {
+            "qid": "q029",
+            "scene": "liability",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 7.62729998677969
+          },
+          {
+            "qid": "q030",
+            "scene": "liability",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 4.067800007760525
+          },
+          {
+            "qid": "q031",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 8.001299982424825
+          },
+          {
+            "qid": "q032",
+            "scene": "liability",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 7.943700009491295
+          },
+          {
+            "qid": "q033",
+            "scene": "liability",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.25,
+            "ndcg": 0.43067655807339306,
+            "latency_ms": 4.315099969971925
+          },
+          {
+            "qid": "q034",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.946599984075874
+          },
+          {
+            "qid": "q035",
+            "scene": "liability",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 0.9197207891481876,
+            "latency_ms": 7.618900039233267
+          },
+          {
+            "qid": "q036",
+            "scene": "liability",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 4.442899953573942
+          },
+          {
+            "qid": "q037",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 4.316399979870766
+          },
+          {
+            "qid": "q038",
+            "scene": "liability",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.217399961315095
+          },
+          {
+            "qid": "q039",
+            "scene": "liability",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 3.0440999544225633
+          },
+          {
+            "qid": "q040",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.254900024738163
+          },
+          {
+            "qid": "q041",
+            "scene": "liability",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.719500001054257
+          },
+          {
+            "qid": "q042",
+            "scene": "ip",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 4.634099954273552
+          },
+          {
+            "qid": "q043",
+            "scene": "ip",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.3333333333333333,
+            "ndcg": 0.5,
+            "latency_ms": 6.837999972049147
+          },
+          {
+            "qid": "q044",
+            "scene": "ip",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 3.449800016824156
+          },
+          {
+            "qid": "q045",
+            "scene": "ip",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 4.933300020638853
+          },
+          {
+            "qid": "q046",
+            "scene": "ip",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 7.763800036627799
+          },
+          {
+            "qid": "q047",
+            "scene": "ip",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 2.620199986267835
+          },
+          {
+            "qid": "q048",
+            "scene": "ip",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.190700001548976
+          },
+          {
+            "qid": "q049",
+            "scene": "ip",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 7.921000011265278
+          },
+          {
+            "qid": "q050",
+            "scene": "ip",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.3333333333333333,
+            "ndcg": 0.5,
+            "latency_ms": 2.959800011012703
+          },
+          {
+            "qid": "q051",
+            "scene": "ip",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 5.821699975058436
+          },
+          {
+            "qid": "q052",
+            "scene": "ip",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.882900022901595
+          },
+          {
+            "qid": "q053",
+            "scene": "ip",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 3.745800000615418
+          },
+          {
+            "qid": "q054",
+            "scene": "ip",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.979200010187924
+          },
+          {
+            "qid": "q055",
+            "scene": "data",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 4.936099983751774
+          },
+          {
+            "qid": "q056",
+            "scene": "data",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.874100014101714
+          },
+          {
+            "qid": "q057",
+            "scene": "data",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 2.064300002530217
+          },
+          {
+            "qid": "q058",
+            "scene": "data",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.868099979124963
+          },
+          {
+            "qid": "q059",
+            "scene": "data",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 7.970100035890937
+          },
+          {
+            "qid": "q060",
+            "scene": "data",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 3.6211000406183302
+          },
+          {
+            "qid": "q061",
+            "scene": "data",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.927699967287481
+          },
+          {
+            "qid": "q062",
+            "scene": "data",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 0.8772153153380493,
+            "latency_ms": 8.179800002835691
+          },
+          {
+            "qid": "q063",
+            "scene": "data",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 3.9330999716185033
+          },
+          {
+            "qid": "q064",
+            "scene": "data",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.852600035723299
+          },
+          {
+            "qid": "q065",
+            "scene": "data",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 7.200499996542931
+          },
+          {
+            "qid": "q066",
+            "scene": "data",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 4.329999967012554
+          },
+          {
+            "qid": "q067",
+            "scene": "data",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.251100043300539
+          },
+          {
+            "qid": "q068",
+            "scene": "compliance",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.690299964044243
+          },
+          {
+            "qid": "q069",
+            "scene": "compliance",
+            "type": "scene",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 6.523300020489842
+          },
+          {
+            "qid": "q070",
+            "scene": "compliance",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 2.5130999856628478
+          },
+          {
+            "qid": "q071",
+            "scene": "compliance",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.201800027862191
+          },
+          {
+            "qid": "q072",
+            "scene": "compliance",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 0.5,
+            "ndcg": 0.6309297535714575,
+            "latency_ms": 7.1499000187031925
+          },
+          {
+            "qid": "q073",
+            "scene": "compliance",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 3.366100019775331
+          },
+          {
+            "qid": "q074",
+            "scene": "compliance",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.671999999321997
+          },
+          {
+            "qid": "q075",
+            "scene": "compliance",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 5.994699953589588
+          },
+          {
+            "qid": "q076",
+            "scene": "compliance",
+            "type": "colloquial",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 3.0571999959647655
+          },
+          {
+            "qid": "q077",
+            "scene": "compliance",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.420000048819929
+          },
+          {
+            "qid": "q078",
+            "scene": "compliance",
+            "type": "scene",
+            "hit": 1.0,
+            "recall": 0.5,
+            "mrr": 0.5,
+            "ndcg": 0.38685280723454163,
+            "latency_ms": 9.470899996813387
+          },
+          {
+            "qid": "q079",
+            "scene": "compliance",
+            "type": "colloquial",
+            "hit": 0.0,
+            "recall": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
+            "latency_ms": 3.23890004074201
+          },
+          {
+            "qid": "q080",
+            "scene": "compliance",
+            "type": "concept",
+            "hit": 1.0,
+            "recall": 1.0,
+            "mrr": 1.0,
+            "ndcg": 1.0,
+            "latency_ms": 6.191299995407462
+          }
+        ]
+      }
+    },
+    {
+      "key": "S1_whole|E2",
+      "strategy": "S1_whole",
+      "embedding": "E2",
+      "status": "failed",
+      "error": "ProviderUnavailable: E2 需要 http://127.0.0.1:9997/v1 的本地推理服务，本机未启动；且 1024 维无法写入 law_chunk.embedding vector(1024)",
+      "n_queries": 0,
+      "n_chunks": 0,
+      "index_ms": 0.0,
+      "index_breakdown": {},
+      "cache_hit": false,
+      "embedding_usage": {},
+      "provider": {},
+      "summary": {
+        "k": 5,
+        "mrr_k": 10,
+        "ndcg_k": 10,
+        "mode": "article",
+        "n": 0,
+        "overall": {
+          "n": 0.0,
+          "hit_rate": 0.0,
+          "recall": 0.0,
+          "mrr": 0.0,
+          "ndcg": 0.0,
+          "latency_ms_mean": 0.0,
+          "latency_ms_p50": 0.0,
+          "latency_ms_max": 0.0,
+          "index_ms": 0.0
+        },
+        "by_scene": {},
+        "by_type": {},
+        "per_query": []
+      }
+    },
+    {
+      "key": "S1_whole|E3",
+      "strategy": "S1_whole",
+      "embedding": "E3",
+      "status": "failed",
+      "error": "ProviderUnavailable: E3 需要 http://127.0.0.1:9997/v1 的本地推理服务，本机未启动；且 512 维无法写入 law_chunk.embedding vector(1024)",
+      "n_queries": 0,
+      "n_chunks": 0,
+      "index_ms": 0.0,
+      "index_breakdown": {},
+      "cache_hit": false,
+      "embedding_usage": {},
+      "provider": {},
+      "summary": {
+        "k": 5,
+        "mrr_k": 10,
+        "ndcg_k": 10,
+        "mode": "article",
+        "n": 0,
+        "overall": {
+          "n": 0.0,
+          "hit_rate": 0.0,
+          "recall": 0.0,
+          "mrr": 0.0,
+          "ndcg": 0.0,
+          "latency_ms_mean": 0.0,
+          "latency_ms_p50": 0.0,
+          "latency_ms_max": 0.0,
+          "index_ms": 0.0
+        },
+        "by_scene": {},
+        "by_type": {},
+        "per_query": []
+      }
+    },
+    {
+      "key": "S2_fixed512|E1",
+      "strategy": "S2_fixed512",
+      "embedding": "E1",
+      "status": "failed",
+      "error": "ProviderUnavailable: strategy=S2_fixed512 仅 0 条有真实向量，缺 2593 条（例：advertising_law:第一条:0:S2_fixed512）；需先跑阶段 2 全量向量化",
+      "n_queries": 0,
+      "n_chunks": 0,
+      "index_ms": 0.0,
+      "index_breakdown": {},
+      "cache_hit": false,
+      "embedding_usage": {},
+      "provider": {},
+      "summary": {
+        "k": 5,
+        "mrr_k": 10,
+        "ndcg_k": 10,
+        "mode": "article",
+        "n": 0,
+        "overall": {
+          "n": 0.0,
+          "hit_rate": 0.0,
+          "recall": 0.0,
+          "mrr": 0.0,
+          "ndcg": 0.0,
+          "latency_ms_mean": 0.0,
+          "latency_ms_p50": 0.0,
+          "latency_ms_max": 0.0,
+          "index_ms": 0.0
+        },
+        "by_scene": {},
+        "by_type": {},
+        "per_query": []
+      }
+    },
+    {
+      "key": "S2_fixed512|E2",
+      "strategy": "S2_fixed512",
+      "embedding": "E2",
+      "status": "failed",
+      "error": "ProviderUnavailable: E2 需要 http://127.0.0.1:9997/v1 的本地推理服务，本机未启动；且 1024 维无法写入 law_chunk.embedding vector(1024)",
+      "n_queries": 0,
+      "n_chunks": 0,
+      "index_ms": 0.0,
+      "index_breakdown": {},
+      "cache_hit": false,
+      "embedding_usage": {},
+      "provider": {},
+      "summary": {
+        "k": 5,
+        "mrr_k": 10,
+        "ndcg_k": 10,
+        "mode": "article",
+        "n": 0,
+        "overall": {
+          "n": 0.0,
+          "hit_rate": 0.0,
+          "recall": 0.0,
+          "mrr": 0.0,
+          "ndcg": 0.0,
+          "latency_ms_mean": 0.0,
+          "latency_ms_p50": 0.0,
+          "latency_ms_max": 0.0,
+          "index_ms": 0.0
+        },
+        "by_scene": {},
+        "by_type": {},
+        "per_query": []
+      }
+    },
+    {
+      "key": "S2_fixed512|E3",
+      "strategy": "S2_fixed512",
+      "embedding": "E3",
+      "status": "failed",
+      "error": "ProviderUnavailable: E3 需要 http://127.0.0.1:9997/v1 的本地推理服务，本机未启动；且 512 维无法写入 law_chunk.embedding vector(1024)",
+      "n_queries": 0,
+      "n_chunks": 0,
+      "index_ms": 0.0,
+      "index_breakdown": {},
+      "cache_hit": false,
+      "embedding_usage": {},
+      "provider": {},
+      "summary": {
+        "k": 5,
+        "mrr_k": 10,
+        "ndcg_k": 10,
+        "mode": "article",
+        "n": 0,
+        "overall": {
+          "n": 0.0,
+          "hit_rate": 0.0,
+          "recall": 0.0,
+          "mrr": 0.0,
+          "ndcg": 0.0,
+          "latency_ms_mean": 0.0,
+          "latency_ms_p50": 0.0,
+          "latency_ms_max": 0.0,
+          "index_ms": 0.0
+        },
+        "by_scene": {},
+        "by_type": {},
+        "per_query": []
+      }
+    }
+  ]
+}
