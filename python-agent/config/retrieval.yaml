@@ -24,9 +24,11 @@ embedding: E1
 # 来源：lab/out/report.md 第 15 组（配置行 bm25=on）。
 use_bm25: true
 
-# rerank。矩阵 15 组固定 rerank=off；阶段 5 的 gte-rerank-v2 对比尚未产出可复现报告，
-# 且生产检索服务还没有接入 lab/rerank.py 的实现，置 true 会退化成 503。
-# 来源：lab/out/report.md 第 15 组（配置行 rerank=off）。
+# rerank。决策：砍掉（不实现、不部署）。总验收 4A=FAIL 确认：检索实验台从未产出
+# gte-rerank-v2 在最优组上的可复现 on/off 对比（report.md 无 rerank 节、全仓库无 rerank.json）；
+# 生产检索服务也从未接入 lab/rerank.py 的实现，use_rerank 一直为 false（置 true 会因缺实现而 503）。
+# 下方 off 是「未实现」的结果，而非「实验证明无收益」的结论。
+# 来源：docs/retrieval-acceptance.md 第 4A 节（FAIL 原判据）。
 use_rerank: false
 
 # 最终返回条数，同时也是 recall@5 / ndcg@10 的 k 口径。

@@ -161,7 +161,7 @@ lab/providers.py:143  h = zlib.crc32(cleaned[i:i+n].encode("utf-8"), self._seed)
 
 | FAIL / 问题 | 根因 | 需决策 |
 | --- | --- | --- |
-| **A. rerank 未完成（FAIL）** | 真实 `gte-rerank-v2` 的 on/off 对比从未跑出可复现产物；`use_rerank=false` 基于「未实现」 | **rerank 做还是砍？** 二选一：①实现真实 on/off 对比（需可用 DashScope key + 网络）后数据驱动决策；②在 `retrieval.yaml` 与 `rag-lab.md` 中**如实**改为「rerank 未实现、决策待定」，删除 §4 中「无显著收益」的未举证表述 |
+| **A. rerank 未完成（FAIL）** | 真实 `gte-rerank-v2` 的 on/off 对比从未跑出可复现产物；`use_rerank=false` 基于「未实现」 | **已决策：砍。** `retrieval.yaml` 的 rerank 段与 `rag-lab.md` §4 已据本 FAIL 事实如实化——明确「未实现、决策砍掉」，并修正 §4 第 99 行 E1/E3 数字错挂（0.6146 归 E3 替身，E1 实为 0.5896），删除「无显著收益」未举证表述（见 §9 决策落实） |
 | B. E3 替身（事实） | 默认 provider 全为哈希投影；最优组恰为 E3 | 简历/对外表述须注明「基线属性」，不得称模型结论 |
 | rag-lab.md §4 第99行 E1/E3 数字错挂 | 文档笔误：0.6146 属 E3，误写 E1 | 修正 §4 措辞 |
 | 第 5 步全栈 e2e 未跑 | 沙箱缺 MySQL/Redis/RabbitMQ 全栈 | 部署环境补跑；真机联调测试已就绪（门控环境变量） |
@@ -174,6 +174,13 @@ lab/providers.py:143  h = zlib.crc32(cleaned[i:i+n].encode("utf-8"), self._seed)
 - **FAIL**：第 4A（rerank 未完成）。
 - **部分/受限**：第 5 步全栈 e2e（核心判据已验证，全栈受环境限制）。
 - **环境/工具链问题（非实现回归）**：mvn 默认 JDK 错配（已用 jdk-25 校正转绿）；DashScope 400（未校正）。
+
+### 决策落实（验收后，由用户拍板）
+
+- **rerank → 砍**：已据 4A FAIL 事实将 `python-agent/config/retrieval.yaml` 的 rerank 段与 `docs/rag-lab.md` §4 如实化——
+  明确「未实现、决策砍掉，非实验证明无收益」；并修正 §4 第 99 行 E1/E3 数字错挂（0.6146 属 E3 替身，E1 实为 0.5896），删除「无显著收益」未举证表述；§7 结论第 4 条同步更正。
+  本次改动**仅触及配置注释与文档**，未触碰业务代码、未改 `use_rerank` 的取值（仍为 `false`）、未改契约与前端。
+- 提交于 `wip/rag-lab-acceptance`（不 amend `dc71a87`、不 force push）。
 
 ### 三个已知问题的结论（原文）
 
