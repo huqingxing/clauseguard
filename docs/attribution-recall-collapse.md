@@ -105,3 +105,44 @@
 | **提升检索召回（次）** | ✅（辅助） | 让候选池真含支撑法条，减少沉默 | 中：检索/切分调优 |
 
 > 本轮只诊断不治疗。建议下一步：在可达环境配置密钥后 `run_e2_e3.py --mode e2/e3` 做实 H2 vs H3 最终确认；随后由实施方落地"证据不足也报 unverified"的改动（一句修改点已给出），并评估检索召回提升。
+
+---
+
+## 6. 重跑前三项校验（用户指令：确保重跑有判别力）
+
+> **环境可达性（重跑前必查）**：本沙箱 `LLM_API_KEY` 为空，DashScope chat/embeddings 均返 **HTTP 401** → E2/E3 真 LLM **仍无法实跑**；PG 55432 在线（OPEN）。以下三件事中，能离线坐实的已坐实，需真模型的标注「阻塞·待密钥环境」。
+
+### 校验 1｜E2 纯度：findings 里 citations 非空的占比（应≈0）
+- **设计保证 = 0%**（不依赖跑批）。E2 用 `tools=()`，无检索工具 → `extract_whitelist` 从 ToolMessage 解析白名单，无消息 → 白名单为空 `{}` → `enforce_citation_whitelist` 对每条 citation 都 `dropped+=1` 并剥离 → `kept` 为空 → `risk_level` 强制 `unverified` 且 `citations=[]`。**即使模型编造法条 source_id，也会被白名单丢弃，不可能进终态。**
+- 结论：E2 召回数字只反映「纯识别力」，不存在「编法条污染」，可信。
+- 实测数字：因 401 无法跑批；机制上保证 `citations-nonempty ≡ 0`。
+
+### 校验 2｜E3 是否真的允许无引用输出（unverified 占比>0 才算通路）
+- **✅ 已实证成立**（来自阶段 7 live 落盘，非假设）：
+  - `Finding.citations` 定义为 `list[Citation] = Field(default_factory=list, …)`，**无 `min_length` 约束** → schema 允许空引用。
+  - live 落盘实测：70 条非-stale findings 中，**64 条有引用 + 6 条 `citations:[]` 且 `risk_level=unverified`**；且「空引用但非 unverified」= 0。说明空引用 finding 能完整存活到终态报告，下游未丢弃。
+  - ⇒ E3 指令「证据不足也报 unverified（citations 留空）」有通路，**E3 ≠ E1**（不是被 schema 卡死）。缺口在模型行为本身（83 条应报未报），不是机制。
+
+### 校验 3｜检索覆盖度（gold 条款是否进 top-20；检索"找得对"而非"链路通"）
+- **部分实证**（离线可得，无需重跑）：
+  - `citation_audit.json`（30 抽样审计）：严格支撑 **14**、部分 13、不支撑 3 → **严格支撑率 46.7%、宽松 90%**。即：即便模型"找到并引用了"法条，严格口径下近半其实没真正支撑结论 → 检索返回的 provisions 大量弱相关/偏题。这正是"100% 真实引用只证明链路通、不证明找得对"的实证。
+  - `metrics.json` per_risk 召回：**credential_risk 0/8、delivery_risk 0/6、force_majeure_risk 0/4 三类直接为 0%**（合计 18/83 ≈ 22% 的漏报集中在这三类）→ 典型"检索始终搜不到该类支撑 → 模型无据可引 → 沉默"的覆盖缺口签名。
+- **完整 top-20 覆盖测量**：需 embeddings（401 阻塞）。已备脚本 `e5_retrieval_coverage.py`（对 20 个 gold 点用 risk_type 构造查询、走生产 `live_payload` 取 top-20、统计覆盖比例），在密钥环境 `PYTHONPATH='python-agent;.' python-agent/.venv/Scripts/python.exe lab/exp/attribution/e5_retrieval_coverage.py` 即得。本地因 401 不跑、不写误导数字（已验证 exit 2）。
+
+## 7. 结论与治疗方案（套用兜底：无法区分时给组合）
+
+- **三件事实测数字汇总**：
+  1. E2 纯度 `citations-nonempty`：**设计保证 0%**（实证阻塞于 401）；
+  2. E3 允许无引用输出：**成立**，live 落盘 6/70 为空引用 unverified（schema 允许、通路通畅）；
+  3. 检索覆盖：严格支撑率 **46.7%**、3 类风险召回 **0%**（完整 top-20 阻塞于 401，e5 已备）。
+- **一句话结论（主因）**：**29.1% 的主因是 H2（证据门控/模型不敢报），但检索覆盖不足（引用严格支撑率仅 46.7%、credential/delivery/force_majeure 三类召回为 0）是显著放大因子——两者叠加，而非单一成因。**
+- **为何不再纠结 H2 vs H3 完美分离**：H3 已被 mock-vs-live 强否定（同模型 mock 96.6%），且 E2/E3 因 401 无法实跑，按用户的兜底指令直接给组合方案。
+- **建议治疗顺序（组合 + A/B，成因不必完美分离）**：
+
+  | 顺序 | 治疗 | 对冲假说 | 代价 | A/B 观测 |
+  |---|---|---|---|---|
+  | ① | 放开引用门槛：prompt/行为层要求"条款显含风险特征即须输出，证据不足标 `unverified`（citations 留空）" | H2（模型不敢报） | 低：不改架构，仅 prompt/行为 | live 召回是否从 0.29 抬升、unverified 占比是否上升 |
+  | ② | 提升检索召回 + 补风险描述/few-shot：优先补 credential/delivery/force_majeure 三类；检索切分/召回调优 | 检索覆盖缺口 + H3 残余 | 中：检索/切分 + prompt 补料 | citation_audit 严格支撑率是否从 46.7% 抬升、三类 0% 是否破零 |
+  | ③ | 组合 A/B：①+② 同跑，对比单独 ① 的增量 | 组合成因 | — | 以 recall + per_risk + 严格支撑率为统一观测面板 |
+
+- **本轮仍只诊断不治疗**：① ② 为实施方落地项；e5 供密钥环境做实检索覆盖。
