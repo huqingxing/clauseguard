@@ -24,11 +24,12 @@ embedding: E1
 # 来源：lab/out/report.md 第 15 组（配置行 bm25=on）。
 use_bm25: true
 
-# rerank。决策：砍掉（不实现、不部署）。总验收 4A=FAIL 确认：检索实验台从未产出
-# gte-rerank-v2 在最优组上的可复现 on/off 对比（report.md 无 rerank 节、全仓库无 rerank.json）；
-# 生产检索服务也从未接入 lab/rerank.py 的实现，use_rerank 一直为 false（置 true 会因缺实现而 503）。
-# 下方 off 是「未实现」的结果，而非「实验证明无收益」的结论。
-# 来源：docs/retrieval-acceptance.md 第 4A 节（FAIL 原判据）。
+# rerank。状态：已实现、未接入生产（lab/rerank.py 已实现 gte-rerank-v2 调用，
+# 但生产 RetrievalService 未接线）。use_rerank 维持 false（置 true 会因服务侧未接线而 503）。
+# 原因：当前召回链路存在架构缺陷（风险召回 96.6%→29.1%），候选池可能缺 gold 时
+# rerank on/off 评测无法归因（假阴性），故本轮不做 rerank 评测结论。
+# 结论：待召回链路（风险覆盖与引用证据解耦）修好后再重做 on/off 对比；本轮 rerank 不作为结论。
+# 来源：docs/rag-lab.md 第 4 节 + docs/retrieval-acceptance.md（4A FAIL 原判据）。
 use_rerank: false
 
 # 最终返回条数，同时也是 recall@5 / ndcg@10 的 k 口径。

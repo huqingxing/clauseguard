@@ -73,15 +73,15 @@
 
 ## 5. 第 4 步：三处已知问题（A=FAIL；B/C 如实记录）
 
-### A. rerank —— **FAIL（原文措辞）**
+### A. rerank —— **FAIL（事实）**
 
-> **阶段 5 未完成，retrieval.yaml 的 `use_rerank=false` 是基于「未实现」而非「实验结论」。**
+> **阶段 5 的 rerank 未接入生产（`lab/rerank.py` 已实现但生产 RetrievalService 未接线），retrieval.yaml 的 `use_rerank=false` 是基于「未接入」而非「实验结论」。**
 
 事实依据（不淡化）：
 - `lab/rerank.py`、`lab/run_rerank.py` **确实存在且是可运行 CLI**（`--reranker {live,deterministic}`、`--limit` 最小样例均在）。
 - 但全仓库**无任何已提交/落盘的 `rerank.json`**（其输出 `lab/out/<label>/rerank.json` 不存在）；`lab/out/v1/report.md` **无 rerank 节**（report.py 仅在检测到 rerank.json 时追加）。
 - 唯一 `rerank=on` 运行是 `lab/out/switch_check/` 的 `S1_whole|E1`，其 `embedding_usage.source=deterministic-hash, tokens=0` —— 是**确定性 provider 的开关通断测试**，非真实 `gte-rerank-v2` 对最优组的 on/off 对比。
-- 真实 `gte-rerank-v2` 的 on/off 对比**从未以可复现产物形式交付**；`retrieval.yaml` 第 27-30 行自述「阶段 5 的 gte-rerank-v2 对比尚未产出可复现报告」属实。
+- 真实 `gte-rerank-v2` 的 on/off 对比**从未以可复现产物形式交付**；`retrieval.yaml` 的 rerank 段自述「阶段 5 的 gte-rerank-v2 对比尚未产出可复现报告」属实。
 
 ### B. E3 替身 —— 必须写入的结论（事实）
 
@@ -161,9 +161,9 @@ lab/providers.py:143  h = zlib.crc32(cleaned[i:i+n].encode("utf-8"), self._seed)
 
 | FAIL / 问题 | 根因 | 需决策 |
 | --- | --- | --- |
-| **A. rerank 未完成（FAIL）** | 真实 `gte-rerank-v2` 的 on/off 对比从未跑出可复现产物；`use_rerank=false` 基于「未实现」 | **已决策：砍。** `retrieval.yaml` 的 rerank 段与 `rag-lab.md` §4 已据本 FAIL 事实如实化——明确「未实现、决策砍掉」，并修正 §4 第 99 行 E1/E3 数字错挂（0.6146 归 E3 替身，E1 实为 0.5896），删除「无显著收益」未举证表述（见 §9 决策落实） |
+| **A. rerank 未完成（FAIL）** | 真实 `gte-rerank-v2` 的 on/off 对比从未跑出可复现产物；`use_rerank=false` 基于「未接入生产」（`lab/rerank.py` 已实现但生产服务未接线） | **已决策：本轮不作为结论，待召回链路修好重做。** `retrieval.yaml` 的 rerank 段与 `rag-lab.md` §4 已据本 FAIL 事实如实化——明确「已实现、未接入生产；候选池可能缺 gold 致 rerank 评测无法归因（假阴性），待召回链路修好重做，本轮不作为结论」，并修正 §4 第 99 行 E1/E3 数字错挂（0.6146 归 E3 替身，E1 实为 0.5896），删除「无显著收益」未举证表述（见 §9 决策落实） |
 | B. E3 替身（事实） | 默认 provider 全为哈希投影；最优组恰为 E3 | 简历/对外表述须注明「基线属性」，不得称模型结论 |
-| rag-lab.md §4 第99行 E1/E3 数字错挂 | 文档笔误：0.6146 属 E3，误写 E1 | 修正 §4 措辞 |
+| rag-lab.md §4 第99行 E1/E3 数字错挂 | 文档笔误：0.6146 属 E3，误写 E1 | 已修正 §4 措辞 |
 | 第 5 步全栈 e2e 未跑 | 沙箱缺 MySQL/Redis/RabbitMQ 全栈 | 部署环境补跑；真机联调测试已就绪（门控环境变量） |
 | DashScope E1 当前 400 | 环境/key 问题，非代码 | 用可用 key 重跑补全 hybrid 验证 |
 | mvn 默认 JDK17 红 | 项目需 JDK21+，沙箱默认 java=17 | 环境要求文档化（README/CI 标注 JDK21+） |
@@ -171,19 +171,19 @@ lab/providers.py:143  h = zlib.crc32(cleaned[i:i+n].encode("utf-8"), self._seed)
 ### PASS/FAIL 统计
 
 - **PASS**：第 0、1、2、3、4B、4C、5（核心）、6 各子项、7、8。
-- **FAIL**：第 4A（rerank 未完成）。
+- **FAIL**：第 4A（rerank 未完成 on/off 对比）。
 - **部分/受限**：第 5 步全栈 e2e（核心判据已验证，全栈受环境限制）。
 - **环境/工具链问题（非实现回归）**：mvn 默认 JDK 错配（已用 jdk-25 校正转绿）；DashScope 400（未校正）。
 
 ### 决策落实（验收后，由用户拍板）
 
-- **rerank → 砍**：已据 4A FAIL 事实将 `python-agent/config/retrieval.yaml` 的 rerank 段与 `docs/rag-lab.md` §4 如实化——
-  明确「未实现、决策砍掉，非实验证明无收益」；并修正 §4 第 99 行 E1/E3 数字错挂（0.6146 属 E3 替身，E1 实为 0.5896），删除「无显著收益」未举证表述；§7 结论第 4 条同步更正。
+- **rerank → 已实现、未接入生产，本轮不作为结论**：已据 4A FAIL 事实将 `python-agent/config/retrieval.yaml` 的 rerank 段与 `docs/rag-lab.md` §4 如实化——
+  明确三点：①状态=已实现未接入生产（`lab/rerank.py` 保留为实验代码，不删除）；②原因=当前召回链路架构缺陷（风险召回 96.6%→29.1%），候选池可能缺 gold 致 rerank 评测无法归因（假阴性）；③结论=待召回链路（风险覆盖与引用证据解耦）修好后重做 on/off 对比，本轮不作为结论。并修正 §4 第 99 行 E1/E3 数字错挂（0.6146 属 E3 替身，E1 实为 0.5896），删除「无显著收益」未举证表述；§7 结论第 4 条同步更正。**简历不写 rerank。**
   本次改动**仅触及配置注释与文档**，未触碰业务代码、未改 `use_rerank` 的取值（仍为 `false`）、未改契约与前端。
 - 提交于 `wip/rag-lab-acceptance`（不 amend `dc71a87`、不 force push）。
 
 ### 三个已知问题的结论（原文）
 
-- **A**：阶段 5 未完成，retrieval.yaml 的 `use_rerank=false` 是基于「未实现」而非「实验结论」。
+- **A**：阶段 5 的 rerank 未接入生产（`lab/rerank.py` 已实现，但生产 RetrievalService 未接线），retrieval.yaml 的 `use_rerank=false` 是基于「未接入」而非「实验结论」。
 - **B**：矩阵最优结论（S5_context|E3，recall@5=0.6146）建立在离线确定性哈希投影替身上，不能用于模型选型。
 - **C**：已在第 0 步处理——39 项改动提交至 `wip/rag-lab-acceptance@34a3c3e`，验收期间可回滚；未推送、未 amend `dc71a87`、未 force push。
