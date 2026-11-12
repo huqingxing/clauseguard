@@ -25,7 +25,8 @@ Stage 11 的两个新节点：
   之前——审批是可能挂起数小时的图内断点，缓存必须在断点前落盘，否则审批期间的
   增量运行会全部 miss。
 
-checkpointer 由 main.py 编译时注入（PostgresSaver，thread_id=contract_id:version）；
+checkpointer 由 main.py 编译时注入（PostgresSaver）；thread_id 由
+app.graph.threads.review_thread_id(run_id) 唯一构造（ADR-0006：一次审查一个 thread）。
 本模块只负责节点与边的装配，不持有任何连接资源。
 """
 

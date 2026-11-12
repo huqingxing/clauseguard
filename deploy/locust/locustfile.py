@@ -180,8 +180,8 @@ class ReviewUser(HttpUser):
 
     def _python_body(self) -> dict[str, Any]:
         return {
-            # 每次新合同：thread_id = contract:version，复用会命中旧 checkpoint，
-            # 测出来的就不是「新合同冷启动」的时延了。
+            # 每次新合同：ADR-0006 后 thread 由服务端按 run_id 派生（一次审查一个
+            # thread），压测无需再靠换 contract_id 规避旧 checkpoint 复用。
             "contract_id": f"bench-{uuid.uuid4().hex[:12]}",
             "version": 1,
             "mode": "full",

@@ -32,6 +32,7 @@ from app.db import InMemoryRunRegistry
 from app.events import SENTINEL, EventEmitter, EventType
 from app.graph.build import build_graph
 from app.graph.state import Budget, ReviewState, ReviewTask
+from app.graph.threads import review_thread_id
 from app.main import _run_pipeline, create_app
 from tests.agents.fixtures import specs_by_id, stage7_corpus, to_clause
 from tests.agents.mock_model import MockScriptedChatModel
@@ -222,9 +223,12 @@ def test_resume_endpoint_resumes_paused_run() -> None:
         graph = build_graph(AgentSettings(), checkpointer=saver)
         emitter1 = EventEmitter()
         specs = specs_by_id(stage7_corpus())
+        # ADR-0006：resume 端点由 run_id 派生 thread（不再读注册表落盘值），
+        # 故经 HTTP 端点续跑的用例必须用同一唯一入口注入，否则断点定位不到。
+        ep_thread = review_thread_id("run-ep")
         config1 = {
             "configurable": {
-                "thread_id": "t-ep",
+                "thread_id": ep_thread,
                 "emitter": emitter1,
                 "limiter": asyncio.Semaphore(5),
                 "agent_factory": _mock_factory(specs, LATENCY_S),
@@ -238,7 +242,7 @@ def test_resume_endpoint_resumes_paused_run() -> None:
         await registry.put(
             "run-ep",
             {
-                "thread_id": "t-ep",
+                "thread_id": ep_thread,
                 "contract_id": "c-ep",
                 "version": 1,
                 "content_hash": "hash-v1",

@@ -1,0 +1,177 @@
+{
+  "note": "修复前基线：同输入单笔隔离跑的 findings 快照（归一化 clause_id 临时文件前缀）",
+  "captured_at_commit": "a182d29",
+  "input": {
+    "contract_id": "c-baseline",
+    "version": 1,
+    "docx_index": 3,
+    "mode": "full",
+    "backend": "mock"
+  },
+  "findings_count": 9,
+  "unverified_count": 0,
+  "findings": [
+    {
+      "clause_id": "#0001",
+      "agent": "compliance_expert",
+      "risk_type": "jurisdiction_risk",
+      "risk_level": "medium",
+      "summary": "[mock] compliance 专家在条款中识别到需关注的约定",
+      "suggestion": "建议补充明确的履约期限与责任上限。",
+      "evidence": "第一条 保密义务\n因本合同引起的争议，双方应友好协商解决；协商不成的，提交合同签",
+      "stale": false,
+      "citations": [
+        {
+          "source_id": "sim-001",
+          "title": "分期付款结构",
+          "excerpt": "预付款30%，到货验收合格后30日内凭增值税专用发票支付尾款，预付按进度款20%比例扣回。",
+          "url": null
+        }
+      ]
+    },
+    {
+      "clause_id": "#0001",
+      "agent": "ip_expert",
+      "risk_type": "ip_ownership_risk",
+      "risk_level": "medium",
+      "summary": "[mock] ip 专家在条款中识别到需关注的约定",
+      "suggestion": "建议补充明确的履约期限与责任上限。",
+      "evidence": "第一条 保密义务\n因本合同引起的争议，双方应友好协商解决；协商不成的，提交合同签",
+      "stale": false,
+      "citations": [
+        {
+          "source_id": "policy-001",
+          "title": "预付款比例与扣回机制",
+          "excerpt": "预付款须与履约进度挂钩，不得超过合同总价的30%，并应约定按进度款比例扣回的机制。",
+          "url": null
+        }
+      ]
+    },
+    {
+      "clause_id": "#0002",
+      "agent": "ip_expert",
+      "risk_type": "ip_ownership_risk",
+      "risk_level": "medium",
+      "summary": "[mock] ip 专家在条款中识别到需关注的约定",
+      "suggestion": "建议补充明确的履约期限与责任上限。",
+      "evidence": "第二条 知识产权\n甲方在履约过程中形成的一切改进成果及职务成果归乙方单独所有，甲",
+      "stale": false,
+      "citations": [
+        {
+          "source_id": "policy-001",
+          "title": "预付款比例与扣回机制",
+          "excerpt": "预付款须与履约进度挂钩，不得超过合同总价的30%，并应约定按进度款比例扣回的机制。",
+          "url": null
+        }
+      ]
+    },
+    {
+      "clause_id": "#0003",
+      "agent": "compliance_expert",
+      "risk_type": "jurisdiction_risk",
+      "risk_level": "medium",
+      "summary": "[mock] compliance 专家在条款中识别到需关注的约定",
+      "suggestion": "建议补充明确的履约期限与责任上限。",
+      "evidence": "第三条 争议解决\n本合同适用于甲乙双方的全部交易，包括设备买卖、安装调试与售后维",
+      "stale": false,
+      "citations": [
+        {
+          "source_id": "sim-001",
+          "title": "分期付款结构",
+          "excerpt": "预付款30%，到货验收合格后30日内凭增值税专用发票支付尾款，预付按进度款20%比例扣回。",
+          "url": null
+        }
+      ]
+    },
+    {
+      "clause_id": "#0004",
+      "agent": "commercial_expert",
+      "risk_type": "payment_risk",
+      "risk_level": "medium",
+      "summary": "[mock] commercial 专家在条款中识别到需关注的约定",
+      "suggestion": "建议补充明确的履约期限与责任上限。",
+      "evidence": "第四条 不可抗力\n买方应在每批次货物验收合格后30日内，凭卖方开具的增值税专用发",
+      "stale": false,
+      "citations": [
+        {
+          "source_id": "sim-001",
+          "title": "分期付款结构",
+          "excerpt": "预付款30%，到货验收合格后30日内凭增值税专用发票支付尾款，预付按进度款20%比例扣回。",
+          "url": null
+        }
+      ]
+    },
+    {
+      "clause_id": "#0004",
+      "agent": "liability_expert",
+      "risk_type": "breach_risk",
+      "risk_level": "medium",
+      "summary": "[mock] liability 专家在条款中识别到需关注的约定",
+      "suggestion": "建议补充明确的履约期限与责任上限。",
+      "evidence": "第四条 不可抗力\n买方应在每批次货物验收合格后30日内，凭卖方开具的增值税专用发",
+      "stale": false,
+      "citations": [
+        {
+          "source_id": "sim-001",
+          "title": "分期付款结构",
+          "excerpt": "预付款30%，到货验收合格后30日内凭增值税专用发票支付尾款，预付按进度款20%比例扣回。",
+          "url": null
+        }
+      ]
+    },
+    {
+      "clause_id": "#0005",
+      "agent": "commercial_expert",
+      "risk_type": "payment_risk",
+      "risk_level": "medium",
+      "summary": "[mock] commercial 专家在条款中识别到需关注的约定",
+      "suggestion": "建议补充明确的履约期限与责任上限。",
+      "evidence": "第五条 通知与送达\n卖方逾期交付的，每逾期一日按合同总价的0.001%向买方支付",
+      "stale": false,
+      "citations": [
+        {
+          "source_id": "sim-002",
+          "title": "分批交付与逾期责任",
+          "excerpt": "卖方于约定日期前分批交付至指定地点，逾期按日万分之五支付违约金，并以合同总价10%为上限。",
+          "url": null
+        }
+      ]
+    },
+    {
+      "clause_id": "#0005",
+      "agent": "liability_expert",
+      "risk_type": "breach_risk",
+      "risk_level": "medium",
+      "summary": "[mock] liability 专家在条款中识别到需关注的约定",
+      "suggestion": "建议补充明确的履约期限与责任上限。",
+      "evidence": "第五条 通知与送达\n卖方逾期交付的，每逾期一日按合同总价的0.001%向买方支付",
+      "stale": false,
+      "citations": [
+        {
+          "source_id": "sim-002",
+          "title": "分批交付与逾期责任",
+          "excerpt": "卖方于约定日期前分批交付至指定地点，逾期按日万分之五支付违约金，并以合同总价10%为上限。",
+          "url": null
+        }
+      ]
+    },
+    {
+      "clause_id": "#0006",
+      "agent": "ip_expert",
+      "risk_type": "ip_ownership_risk",
+      "risk_level": "medium",
+      "summary": "[mock] ip 专家在条款中识别到需关注的约定",
+      "suggestion": "建议补充明确的履约期限与责任上限。",
+      "evidence": "第六条 合同解除\n双方应对履约过程中知悉的对方商业秘密严格保密，保密期限为合同终",
+      "stale": false,
+      "citations": [
+        {
+          "source_id": "policy-004",
+          "title": "交付期限确定性",
+          "excerpt": "交付期限应约定具体日期或可计算的确定性条件，禁止使用「尽快」「另行通知」等不确定表述。",
+          "url": null
+        }
+      ]
+    }
+  ]
+}

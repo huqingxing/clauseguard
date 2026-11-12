@@ -7,10 +7,12 @@ Stage 7 起 run.completed 携带真实 usage（budget 累加值）/findings_coun
 每个请求独立创建 EventEmitter 与并发信号量——20 并发下事件流不串（seq 各自从 1 起）。
 Stage 8 起 run.completed 追加 quality（verified_rate/rework_count/unverified_count，
 由图终态 findings 与 critic_failures 计算）。
-Stage 9 起：图编译注入 PostgresSaver checkpointer（thread_id=contract_id:version，
-连接池由 lifespan 管理）；新增 human_approval 断点——存在 high 风险即 interrupt()
-挂起，运行态持久化；新增 POST /v1/runs/{run_id}/resume 供 Java 转发审批结果恢复运行；
-事件序号随 checkpoint 落盘，重启后 resume 续接而非重置。
+Stage 9 起：图编译注入 PostgresSaver checkpointer；新增 human_approval 断点——存在 high
+风险即 interrupt() 挂起，运行态持久化；新增 POST /v1/runs/{run_id}/resume 供 Java 转发
+审批结果恢复运行；事件序号随 checkpoint 落盘，重启后 resume 续接而非重置。
+ADR-0006：thread_id 由 app.graph.threads.review_thread_id(run_id) 唯一构造（一次审查 =
+一个 thread，f"run:{run_id}"），不再按 contract_id:version 复用断点命名空间；resume 由
+run_id 直接派生 thread，不读旧格式的落盘值。
 Stage 10 起：render 节点真实回写带批注的 Word（app/render/docx_writer.py，lxml 直接
 操作 OOXML 四件套）并上传 MinIO；run.completed 追加可选 artifact 字段
 （object_key/download_url/comments_count/size_bytes），前端据此下载产物。
@@ -38,7 +40,7 @@ from app.agents.spec import ExpertSpec, build_expert_agent, default_chat_model
 from app.contracts.models import Citation as EventCitation
 from app.contracts.models import Finding as EventFinding
 from app.contracts.models import RiskLevel
-from app.db import DbPool, InMemoryRunRegistry, RunRegistry, thread_id_for
+from app.db import DbPool, InMemoryRunRegistry, RunRegistry
 from app.events import SENTINEL, EventEmitter, EventType
 from app.graph.build import build_graph
 from app.graph.state import (
@@ -50,6 +52,7 @@ from app.graph.state import (
     ReviewTask,
     active_findings,
 )
+from app.graph.threads import THREAD_PREFIX, review_thread_id
 from app.incremental.cache import (
     STORE_CONFIG_KEY,
     IncrementalStore,
@@ -310,13 +313,30 @@ async def _run_pipeline(
     「这次运行」的属性。根 span 覆盖整轮图执行，token 总量在收尾时回填，
     Langfuse 的 trace 汇总（成本/tokens）就读根 span，不需要前端另算。
     """
+    # ADR-0006：观测维度拆开——session 仍是「合同:版本」的聚合维度，
+    # review/thread/run 是「单次审查」维度，供按审查 ID 精确过滤，两者正交不绑定。
+    configurable = (config or {}).get("configurable") or {}
+    thread_id = str(configurable.get("thread_id") or "")
     span_attrs: dict[str, Any] = {
         "clauseguard.run.id": run_id,
+        # 本系统一次审查 = 一次 run（Java reviewId 未透传到编排层），
+        # 故 review.id 由 run_id 承载；两份别名便于按任一维度检索。
+        "clauseguard.review.id": run_id,
+        "clauseguard.thread.id": thread_id,
         "clauseguard.review.mode": mode,
         "clauseguard.trace.id": trace_id,
     }
     if session:
         span_attrs["langfuse.session.id"] = session
+    logger.info(
+        "run tags: review.id=%s run.id=%s thread.id=%s session=%s mode=%s resumed=%s",
+        run_id,
+        run_id,
+        thread_id,
+        session or "-",
+        mode,
+        resume is not None,
+    )
     if resume is not None:
         # 恢复是同一笔业务的第二段：单独一个根 span，但打上标记便于在链路上区分
         # 「首次运行」与「审批后续跑」，不必靠时间戳猜。
@@ -585,7 +605,10 @@ def create_app(
         emitter = EventEmitter()
         settings = get_agent_settings()
         graph = build_graph(settings, app.state.checkpointer)
-        thread_id = thread_id_for(contract_id, version)
+        # ADR-0006：一次审查 = 一个 thread。run_id 在本次请求内生成且全局唯一，
+        # 由它派生 thread 后，同合同同版本的两笔审查不再共用 checkpoint；
+        # resume 用同一 run_id 派生回同一个 thread，断点续接语义保持不变。
+        thread_id = review_thread_id(run_id)
         config = _build_run_config(
             emitter, thread_id, trace_id, settings, app.state.incremental_store
         )
@@ -639,9 +662,13 @@ def create_app(
     async def resume_run(run_id: str, request: Request) -> Response:
         """恢复被 human_approval 中断的运行（由 Java approveReview 转发审批结果调用）。
 
-        从 run_registry 取 thread_id 与 event_seq → 用同一 checkpointer 续跑；事件序号
-        从注册表续接，故重启用 resume 后 seq 继续递增不重置。不从头重跑整个图
-        （铁律 4：断点恢复）。
+        ADR-0006：thread_id 由 run_id 经 review_thread_id 直接派生（与首跑同一个
+        run_id → 同一个 thread），**不再读取注册表里的 thread_id 落盘值**——旧格式
+        （contract_id:version）记录只读保留，命中只 WARN 不报错，也绝不拿它当
+        checkpoint 命名空间；切换前需排空在跑的旧审查。
+        从 run_registry 取 event_seq/trace_id/session → 用同一 checkpointer 续跑；
+        事件序号从注册表续接，故重启用 resume 后 seq 继续递增不重置。不从头重跑
+        整个图（铁律 4：断点恢复）。
         恢复也以 SSE 流式下发（NODE_FINISHED(human_approval) + render + RUN_COMPLETED），
         Java 据此把完成事件续接到前端订阅的 SSE，前端无需重新建立连接即收到终态。
         """
@@ -651,8 +678,27 @@ def create_app(
                 status_code=404,
                 content={"code": "RUN_NOT_FOUND", "message": f"run {run_id} 不存在或已过期"},
             )
-        thread_id = info["thread_id"]
-        trace_id = info.get("trace_id") or uuid.uuid4().hex
+        legacy_thread = str(info.get("thread_id") or "")
+        if legacy_thread and not legacy_thread.startswith(THREAD_PREFIX):
+            # ADR-0006「部署时排空」：旧审查的断点挂在 contract:version thread 上，
+            # 新代码既不读它、也不自动迁移。给明确业务错误（409）而不是去跑一个
+            # 没有 checkpoint 的空图，更不是 500。前端据此提示「请重新发起审查」。
+            logger.warning(
+                "resume 命中旧格式 thread 记录 run=%s legacy_thread=%s；按 ADR-0006 拒绝续跑，"
+                "旧审查须重新发起（切换前应在跑审查到达终态）",
+                run_id, legacy_thread,
+            )
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "code": "LEGACY_THREAD_SCOPE",
+                    "message": "该审查使用旧的 thread 作用域，升级后无法续跑，请重新发起审查",
+                },
+            )
+        # 恒等映射：thread_id == review_thread_id(run_id)，与首跑写入的值逐字相同。
+        # 不读 info["thread_id"]，resume 因此完全不依赖 contract_id/version。
+        thread_id = review_thread_id(run_id)
+        trace_id = str(info.get("trace_id") or uuid.uuid4().hex)
         body: Any = await request.json()
         settings = get_agent_settings()
         graph = build_graph(settings, app.state.checkpointer)

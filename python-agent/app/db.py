@@ -2,9 +2,12 @@
 
 为什么独立成模块：config.py 承载服务级配置，本模块只管 Postgres 连接池与 checkpointer
 的生命周期（由 lifespan 创建/关闭），不触碰 config.py 以免牵动服务级配置。
-run 注册表把 run_id 映射到 Postgres checkpointer 的 thread_id（= contract_id:version），
-并持久化到同一 Postgres——进程重启后 resume 仍能定位断点。铁律 4 要求运行态只在
-ReviewState，但 run→thread 的索引属于基础设施，必须落库而非内存全局变量（否则重启即丢）。
+run 注册表把 run_id 映射到断点元信息（thread_id/event_seq/trace_id/session），并持久化
+到同一 Postgres——进程重启后 resume 仍能定位断点。铁律 4 要求运行态只在 ReviewState，
+但 run→thread 的索引属于基础设施，必须落库而非内存全局变量（否则重启即丢）。
+
+thread_id 的**构造**不在这里：唯一入口是 `app.graph.threads.review_thread_id`
+（一次审查 = 一个 thread，见 ADR-0006）。本模块只负责把调用方算好的值落库/读出。
 """
 
 from __future__ import annotations
@@ -140,6 +143,5 @@ class DbPool:
         return PostgresRunRegistry(self._pool)
 
 
-def thread_id_for(contract_id: str, version: int) -> str:
-    """checkpointer 线程号：同 contract_id+version 复用同一断点命名空间。"""
-    return f"{contract_id}:{version}"
+# `thread_id_for(contract_id, version)` 已移除（ADR-0006）：按合同版本复用 thread 会让
+# 同版本的两笔审查串状态。构造 thread_id 请统一调用 app.graph.threads.review_thread_id。

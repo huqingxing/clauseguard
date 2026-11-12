@@ -272,11 +272,7 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
 2. **评测 examiner 是确定性替身**：100% 召回证明的是链路无损耗，不是模型能力；换真模型只需换
    `build_eval_agent_factory` 里的模型。
 3. **条款定位 IoU 恒 1.0**：合成语料里一条款=一句，切分后 span 恰等于标注 span，区分度有限。
-4. **同一合同同版本的第二笔审查会串状态**：`thread_id` 取 `contract_id:version`，两笔审查
-   共享同一个 LangGraph checkpoint，第二笔的 `findings` 会累加并出现一批 `unverified`
-   （实测 23 → 46）。单笔隔离跑是干净的。属 Stage 9 设计遗留，修法见
-   [docs/stage12-acceptance.md](docs/stage12-acceptance.md) 5.1。
-5. **管理端已鉴权，用户端仍未鉴权**：`/api/v1/admin/**`（含待审批队列）需要 `ADMIN` 角色
+4. **管理端已鉴权，用户端仍未鉴权**：`/api/v1/admin/**`（含待审批队列）需要 `ADMIN` 角色
    （HTTP BASIC，账号在 `application.yml` 的 `clauseguard.security.users`，启动时 BCrypt
    编码后进内存，**明文只用于本机演示，生产必须换**）。`/api/v1/**` 其余接口仍是 `permitAll`。
    **审批写入端点也在其中**：`POST /api/v1/reviews/{id}/approve` 没锁，绕过管理端页面直接
@@ -285,22 +281,22 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
    对外上线前必须先接用户认证，否则审计留痕形同虚设。**注意评测接口也是其中之一**：
    管理端登录卡把两屏都挡在后面，但 `/api/v1/eval/summary` 在网关侧仍放行，
    绕过页面直接请求照样拿得到成本结构——前端登录只解决「谁在用界面」，不解决「谁能调接口」。
-6. **压测跑在 mock 后端**：数值反映编排层（下载/切分/6 专家 fan-out/critic/回写），
+5. **压测跑在 mock 后端**：数值反映编排层（下载/切分/6 专家 fan-out/critic/回写），
    不含真实供应商的模型时延与限流。
-7. **Python 侧 resume 是同一条 trace 的第二段根 span**（不是同一个 span 的延续），
+6. **Python 侧 resume 是同一条 trace 的第二段根 span**（不是同一个 span 的延续），
    Langfuse 里会显示为两段，用 `clauseguard.resumed` 区分。
-8. **待审批队列不区分「派给谁」**：所有 `AWAITING_APPROVAL` 的审查对每个管理员都一样可见，
+7. **待审批队列不区分「派给谁」**：所有 `AWAITING_APPROVAL` 的审查对每个管理员都一样可见，
    没有指派人、没有认领、没有并发保护（两人同时打开同一笔，后提交的会拿到 409
    `CONTRACT_CHANGED`，因为状态已不是待审）。队列只解决「待办在哪儿」，不解决「谁来干」。
-9. **「预计 2 小时」是口径不是测量值**：用户端详情页写的排期与队列标黄阈值用的是同一个常量
+8. **「预计 2 小时」是口径不是测量值**：用户端详情页写的排期与队列标黄阈值用的是同一个常量
    （`APPROVAL_SLA_HOURS = 2` / `OVERDUE_MS = 2h`），没有按历史审批时长统计。改成真实
    percentile 需要一张审批耗时的事实表，本阶段不做。
-10. **状态先改、事件后写**：`handleAgentEvent` 先更新 `review.status` 再落 `review_event`，
+9. **状态先改、事件后写**：`handleAgentEvent` 先更新 `review.status` 再落 `review_event`，
     两步不在同一个事务里。Stage 5 实测撞到过——`run.completed` 的 payload 超过 TEXT 上限，
     事件插入失败而状态已是 `COMPLETED`，用户端重放看不到终态、永远停在「等待审批」。
     已用 `V4__widen_event_payload.sql` 把列放宽到 MEDIUMTEXT 消除触发条件，
     但「写事件失败会导致状态与事件不一致」这个结构性问题仍在。
-11. ~~**批注稿链路的源对象键没接通**~~ **已修复（Stage 12 后续）**：原 bug 是 Java 上传把源
+10. ~~**批注稿链路的源对象键没接通**~~ **已修复（Stage 12 后续）**：原 bug 是 Java 上传把源
     落在 `uploads/{id}-v{n}.docx` 而 Python render 按 `contracts/{id}/v{n}/source.docx` 取源，
     键约定没对上导致 `PLACEHOLDER_RENDER: reason=source-unavailable`。现采用方案 A——Java 按
     同一套约定键 `contracts/{id}/v{n}/source.{ext}` 写入（Python 侧不动，仍由 `source_object_key`
@@ -309,18 +305,18 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
     `./uploads`（相对其启动目录）与 Python 的 `CLAUSEGUARD_MINIO_LOCAL_DIR` 指向同一目录——
     `make run-py` 与 `deploy/dev/start-agent-*.ps1` 已自动对齐到 `java-service/uploads`；历史遗留键
     `{id}-v{n}.{ext}` 仍作只读回退（命中打 WARN，不报错）。
-12. **后端不可用时提示仍受代理口径影响**：列表页/工作台现在会把失败翻译成人话
+11. **后端不可用时提示仍受代理口径影响**：列表页/工作台现在会把失败翻译成人话
     （`utils/error.ts`），失败时不再冒充「还没有合同」空态；结果页在重连 3 次（约 7 秒）
     仍收不到事件时明确显示「连不上服务，请确认 java-service 是否在 8080 运行」。
     剩下的偏差：本机 `vite dev` 的代理把「连不上后端」表现成 `HTTP 500`，所以文案会说
     「后端出错了」而不是「连不上」；部署到 nginx 后是 502，文案才是「连不上后端服务」。
     另外「重连 N 次」这个口径只在事件流上成立——已完成的审查断线时页面读的是 REST 快照，
     不会因为连不上就抹掉已显示的结果。
-13. **用户端接口仍未鉴权，只有 `/api/v1/admin/**` 受保护**：`SecurityConfig` 里除管理端路径外
+12. **用户端接口仍未鉴权，只有 `/api/v1/admin/**` 受保护**：`SecurityConfig` 里除管理端路径外
     一律 `permitAll`，所以上传、发起审查、读结果、审批写入、以及 `/api/v1/eval/summary` 都不需要
     任何凭证——用 `curl` 不带 `-u` 直接打就是 200。管理端那套 BASIC 只是把「运维/成本/审批」这一块
     关起来，**不是**给整个 API 上的门。任何「用户端看着没有入口」的结论都不等于「接口调不到」，
-    细节与后果见第 5 条。
+    细节与后果见第 4 条。
 
 ## 测试与门禁
 

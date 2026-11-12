@@ -13,13 +13,10 @@
 from __future__ import annotations
 
 import asyncio
-import os
-from pathlib import Path
 
 import pytest
 
-from app.graph.nodes.render import render
-from app.graph.state import Clause, Finding
+from app.graph.state import Clause
 from app.render.service import PLACEHOLDER_PREFIX, render_for_state
 from tests.render.fixtures import build_sample, docx_parts
 
@@ -97,7 +94,9 @@ def test_e2e_legacy_key_fallback_warns(tmp_path, monkeypatch: pytest.MonkeyPatch
     assert any("历史遗留键" in r.message for r in caplog.records)
 
 
-def test_e2e_missing_source_warns_not_errors(tmp_path, monkeypatch: pytest.MonkeyPatch, caplog) -> None:
+def test_e2e_missing_source_warns_not_errors(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, caplog
+) -> None:
     """源确实缺失：降级 placeholder + WARN（不抛异常、不 ERROR 级）。"""
     monkeypatch.setenv("clauseguard_minio_local_dir", str(tmp_path))
 

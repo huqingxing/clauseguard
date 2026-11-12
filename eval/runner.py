@@ -25,6 +25,7 @@ from app.agents.settings import AgentSettings
 from app.events import EventEmitter
 from app.graph.build import build_graph
 from app.graph.state import Budget, Clause, ReviewState, ReviewTask
+from app.graph.threads import review_thread_id
 from app.parse.loader import load_document
 from app.parse.splitter import split_document
 from eval.examiner import build_eval_agent_factory
@@ -126,7 +127,8 @@ async def run_contract(
     emitter = EventEmitter()
     config = {
         "configurable": {
-            "thread_id": f"eval-{contract_id}",
+            # ADR-0006：与生产链路共用唯一构造入口，评测每一次 run 也是独立 thread。
+            "thread_id": review_thread_id(f"eval-{contract_id}"),
             "emitter": emitter,
             "limiter": asyncio.Semaphore(5),
             "agent_factory": agent_factory,
