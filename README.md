@@ -266,61 +266,73 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
 
 ## 已知限制
 
+下列为当前仍成立的边界（已修复的四类问题见文末「修复记录」），每条补了「影响范围 + 触发条件」便于讲清边界：
+
 1. **检索默认走真实法条库**：`app/tools/*` 仅在 `retrieval.mode=mock` 时返回固定语料；
    默认 live 由 `python-agent/retrieval` 检索 pgvector 法条库（阶段 7 验收见
-   [docs/rag-lab.md](docs/rag-lab.md)）。
+   [docs/rag-lab.md](docs/rag-lab.md)）。影响范围：审查引用的法条来源与引用校验的命中率；
+   触发条件：仅当 `retrieval.mode=live`（默认）且 pgvector 法条库未就绪或检索超时，才会降级为
+   `unverified`，审查不会 500。
 2. **评测 examiner 是确定性替身**：100% 召回证明的是链路无损耗，不是模型能力；换真模型只需换
-   `build_eval_agent_factory` 里的模型。
+   `build_eval_agent_factory` 里的模型。影响范围：评测报告里召回/误报等质量指标的解释效力；
+   触发条件：跑 `make eval` 用 mock examiner 时，结论只证明链路无损，换真模型只需替换工厂里的模型、口径不变。
 3. **条款定位 IoU 恒 1.0**：合成语料里一条款=一句，切分后 span 恰等于标注 span，区分度有限。
-4. **管理端已鉴权，用户端仍未鉴权（这是登记的取舍，不是漏配）**：`/api/v1/admin/**`
-   需要 `ADMIN` 角色（HTTP BASIC，账号在 `application.yml` 的 `clauseguard.security.users`，
-   启动时 BCrypt 编码后进内存，**明文只用于本机演示，生产必须换**）。审批写入
-   `POST /api/v1/admin/reviews/{id}/approve` 与评测看板 `GET /api/v1/admin/eval/summary`
-   都已迁到 `/api/v1/admin/` 下，受同一套 ADMIN 规则保护——**用户端无身份，审批只能经管理端**：
-   绕过管理端页面直接 `curl` 不带 `-u` 会收到 401/403，操作人取自认证主体（Basic 登录账号）
-   而不是客户端自称的 `X-Operator` 头。给整个用户端上鉴权是另一个阶段的产品决策
-   （需先做用户认证），不在本任务内。`/api/v1/**` 其余用户端接口（上传、发起审查、读结果）仍是
-   `permitAll`，属于同一登记的取舍。详见 [ADR-0008](docs/ADR-0008-admin-protected-write-paths.md)。
+   影响范围：定位准确率这一指标的可信度；触发条件：合成语料一条款即一句，真实合同多句条款会拉开区分度，
+   当前数值不能外推到真实语料。
+4. **用户端接口仍未鉴权（登记的取舍，不是漏配）**：`SecurityConfig` 除 `/api/v1/admin/**` 外
+   一律 `permitAll`，上传、发起审查、读结果都不需要凭证——绕过页面直接 `curl` 不带 `-u` 就是 200。
+   管理端那套 BASIC 只把「运维/成本/审批」关起来，不是给整个 API 上的门；任何「用户端看着没有
+   入口」都不等于「接口调不到」。审批写入与评测看板已迁到 `/api/v1/admin/` 受 ADMIN 保护，
+   不再是无凭证可达（见文末「修复记录」）。给整个用户端上鉴权是另一个阶段的产品决策
+   （需先做用户认证），不在本任务内。影响范围：所有用户端只读/创建接口的访问控制；
+   触发条件：当前 `/api/v1/**` 除管理端外一律开放，仅当决定上线用户认证后才会收紧，届时这些接口才会要求凭证。
 5. **压测跑在 mock 后端**：数值反映编排层（下载/切分/6 专家 fan-out/critic/回写），
-   不含真实供应商的模型时延与限流。
+   不含真实供应商的模型时延与限流。影响范围：压测数字能否代表生产时延与限流；
+   触发条件：`make bench` 走 mock 后端，需接真模型才能逼近生产真实时延。
 6. **Python 侧 resume 是同一条 trace 的第二段根 span**（不是同一个 span 的延续），
-   Langfuse 里会显示为两段，用 `clauseguard.resumed` 区分。
+   Langfuse 里会显示为两段，用 `clauseguard.resumed` 区分。影响范围：一次审查在 Langfuse 里的链路展示；
+   触发条件：仅当发生中断恢复（human_approval interrupt 后 resume）时才出现第二段根 span，
+   单次无中断的审查不受影响。
 7. **待审批队列不区分「派给谁」**：所有 `AWAITING_APPROVAL` 的审查对每个管理员都一样可见，
-   没有指派人、没有认领、没有并发保护（两人同时打开同一笔，后提交的会拿到 409
-   `CONTRACT_CHANGED`，因为状态已不是待审）。队列只解决「待办在哪儿」，不解决「谁来干」。
+   没有指派人、没有认领、没有并发保护。影响范围：多人协作时同一笔待审批的并发处理；
+   触发条件：两个管理员同时打开同一笔待审，后提交者会因状态已非待审而拿到 409
+   `CONTRACT_CHANGED`，队列只解决「待办在哪儿」，不解决「谁来干」。
 8. **「预计 2 小时」是口径不是测量值**：用户端详情页写的排期与队列标黄阈值用的是同一个常量
-   （`APPROVAL_SLA_HOURS = 2` / `OVERDUE_MS = 2h`），没有按历史审批时长统计。改成真实
-   percentile 需要一张审批耗时的事实表，本阶段不做。
-9. ~~**状态先改、事件后写**~~ **已修复（ADR-0007）**：原实现 `handleAgentEvent` 先改
-    `review.status` 再落 `review_event`，两次独立提交。Stage 5 的 `run.completed` payload 超
-    TEXT 上限时，事件插入失败而状态已是 `COMPLETED`，用户端重放看不到终态。现采用**方案 A**：
-    `ReviewEventWriter.persist` 把「状态变更 + 事件插入 + `last_event_at`」放进同一个
-    `@Transactional`，写失败即整体回滚；终态写失败会补偿一条契约合规的 `run.failed` 并置
-    `FAILED`，非关键事件写失败则降级为 `node.failed` 诊断事件、不中断 SSE 流（保证真终态
-    仍能到达）。重放存储只是 `review_event` 表的投影，可按 seq 重建；已有看门狗新增
-    `repairTerminalGaps()`，状态已终态但终态事件缺失时原子补写一条并打 WARN 记录累计修复
-    次数。真实 MySQL 复现/验收输出见 `docs/ADR-0007-review-event-atomicity.md`。
-10. ~~**批注稿链路的源对象键没接通**~~ **已修复（Stage 12 后续）**：原 bug 是 Java 上传把源
-    落在 `uploads/{id}-v{n}.docx` 而 Python render 按 `contracts/{id}/v{n}/source.docx` 取源，
-    键约定没对上导致 `PLACEHOLDER_RENDER: reason=source-unavailable`。现采用方案 A——Java 按
-    同一套约定键 `contracts/{id}/v{n}/source.{ext}` 写入（Python 侧不动，仍由 `source_object_key`
-    生成键），键约定集中定义在 `contracts/storage-keys.md` 并由 `ContractStorageKeysTest` 与
-    `test_object_key_conventions` 双向守门。默认配置下接通的前提：`java-service` 的默认上传根
-    `./uploads`（相对其启动目录）与 Python 的 `CLAUSEGUARD_MINIO_LOCAL_DIR` 指向同一目录——
-    `make run-py` 与 `deploy/dev/start-agent-*.ps1` 已自动对齐到 `java-service/uploads`；历史遗留键
-    `{id}-v{n}.{ext}` 仍作只读回退（命中打 WARN，不报错）。
-11. **后端不可用时提示仍受代理口径影响**：列表页/工作台现在会把失败翻译成人话
-    （`utils/error.ts`），失败时不再冒充「还没有合同」空态；结果页在重连 3 次（约 7 秒）
-    仍收不到事件时明确显示「连不上服务，请确认 java-service 是否在 8080 运行」。
-    剩下的偏差：本机 `vite dev` 的代理把「连不上后端」表现成 `HTTP 500`，所以文案会说
-    「后端出错了」而不是「连不上」；部署到 nginx 后是 502，文案才是「连不上后端服务」。
-    另外「重连 N 次」这个口径只在事件流上成立——已完成的审查断线时页面读的是 REST 快照，
-    不会因为连不上就抹掉已显示的结果。
-12. **用户端接口仍未鉴权，只有 `/api/v1/admin/**` 受保护**：`SecurityConfig` 里除管理端路径外
-    一律 `permitAll`，所以上传、发起审查、读结果都不需要任何凭证——用 `curl` 不带 `-u` 直接打就是 200。
-    管理端那套 BASIC 把「运维/成本/审批」这一块关起来，**不是**给整个 API 上的门。任何「用户端看着没有
-    入口」的结论都不等于「接口调不到」。审批写入与评测看板已迁到 `/api/v1/admin/` 下受 ADMIN 保护
-    （见第 4 条），不再是无凭证可达；仍漏在 `permitAll` 的只有用户端只读/创建类接口，属于登记的取舍。
+   （`APPROVAL_SLA_HOURS = 2` / `OVERDUE_MS = 2h`），没有按历史审批时长统计。影响范围：用户端与
+   队列页的 SLA 标黄/排期提示；触发条件：用固定常量而非真实 percentile，改成真实统计需新增一张
+   审批耗时事实表，本阶段不做。
+9. **后端不可用时提示仍受代理口径影响**：列表页/工作台会把失败翻译成人话
+   （`utils/error.ts`），不再冒充「还没有合同」空态；结果页在重连 3 次（约 7 秒）
+   仍收不到事件时明确显示「连不上服务，请确认 java-service 是否在 8080 运行」。
+   影响范围：前端在后端故障时的错误文案准确性；触发条件：本机 `vite dev` 代理把「连不上」表现成
+   HTTP 500（文案说「后端出错」），部署到 nginx 后才是 502（文案「连不上」）；「重连 N 次」口径只在
+   事件流成立，已完成审查读 REST 快照不受影响。
+
+## 修复记录
+
+自查已知限制时定位并修复的四类问题，每条都有回归用例与真实环境验收：
+
+1. **批注稿源对象键不一致**（Stage 12 后续，`a182d29`）：Java 上传把源落在 `uploads/{id}-v{n}.docx`，
+   而 Python render 按 `contracts/{id}/v{n}/source.docx` 取源，键约定没对上导致批注稿为空
+   （`PLACEHOLDER_RENDER: reason=source-unavailable`）。改法：Java 统一按约定键
+   `contracts/{id}/v{n}/source.{ext}` 写入，键约定集中定义并由 `ContractStorageKeysTest` /
+   `test_object_key_conventions` 双向守门，历史遗留键作只读回退。验证：Python render 单测 45 通过
+   ＋ Java 单测 12 通过 ＋ 真实 render 节点日志（e2e 新键场景出 `annotated.docx` 且 `comments.xml` 含批注）。
+2. **审查会话粒度错误导致状态串写**（ADR-0006，`fdb6ed0`）：原 `review_thread_id(run_id)` 用
+   `run_id` 构造、但 `streamRun` 未透传、resume 查表派发错位，同合同同版本多笔审查共用会话状态导致串写。
+   改法：唯一构造入口 `review_thread_id(run_id) -> f"run:{run_id}"`，resume 由 path 上的 `run_id`
+   直接派生，旧 checkpoint 只读兼容。验证：`thread_scope` 测试 9 passed ＋ 续跑/重启四步回归 ＋ 修复前后重叠=0。
+3. **状态与事件非事务导致终态丢失**（ADR-0007，`97fc6ab`）：原实现先改 `review.status` 再落
+   `review_event`，两次独立提交；大 payload 事件插入失败时状态已成 `COMPLETED`，重放看不到终态。
+   改法：`ReviewEventWriter.persist` 把「状态变更 + 事件插入 + `last_event_at`」放进同一 `@Transactional`，
+   终态写失败补偿 `run.failed` 置 `FAILED`，看门狗 `repairTerminalGaps()` 原子补写缺失终态。
+   验证：`ReviewEventConsistencyIntegrationTest` 3 passed ＋ 真实 MySQL 复现/验收（17MB payload 分叉成立，
+   修复后 `FAILED+run.failed` 或 `COMPLETED+run.completed`）。
+4. **审批与评测接口未鉴权**（ADR-0008，`b7421f3`）：原 `POST /api/v1/reviews/{id}/approve` 与
+   `GET /api/v1/eval/summary` 在 `permitAll`，任何人可批准合同/拿成本；`X-Operator` 是客户端自称不可信。
+   改法：端点迁 `/api/v1/admin/`（复用 `hasRole("ADMIN")`），操作人改取 `Authentication.getName()`，
+   `X-Operator` 标 `deprecated` 仅 WARN。验证：真实服务三身份 curl（匿名 401 / USER 403 / ADMIN 200）
+   ＋ 伪造 `X-Operator` 头仍落库 `operator=admin` ＋ `AdminReviewControllerTest` 8 例。
 
 ## 测试与门禁
 
