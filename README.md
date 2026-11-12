@@ -291,11 +291,15 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
 8. **「预计 2 小时」是口径不是测量值**：用户端详情页写的排期与队列标黄阈值用的是同一个常量
    （`APPROVAL_SLA_HOURS = 2` / `OVERDUE_MS = 2h`），没有按历史审批时长统计。改成真实
    percentile 需要一张审批耗时的事实表，本阶段不做。
-9. **状态先改、事件后写**：`handleAgentEvent` 先更新 `review.status` 再落 `review_event`，
-    两步不在同一个事务里。Stage 5 实测撞到过——`run.completed` 的 payload 超过 TEXT 上限，
-    事件插入失败而状态已是 `COMPLETED`，用户端重放看不到终态、永远停在「等待审批」。
-    已用 `V4__widen_event_payload.sql` 把列放宽到 MEDIUMTEXT 消除触发条件，
-    但「写事件失败会导致状态与事件不一致」这个结构性问题仍在。
+9. ~~**状态先改、事件后写**~~ **已修复（ADR-0007）**：原实现 `handleAgentEvent` 先改
+    `review.status` 再落 `review_event`，两次独立提交。Stage 5 的 `run.completed` payload 超
+    TEXT 上限时，事件插入失败而状态已是 `COMPLETED`，用户端重放看不到终态。现采用**方案 A**：
+    `ReviewEventWriter.persist` 把「状态变更 + 事件插入 + `last_event_at`」放进同一个
+    `@Transactional`，写失败即整体回滚；终态写失败会补偿一条契约合规的 `run.failed` 并置
+    `FAILED`，非关键事件写失败则降级为 `node.failed` 诊断事件、不中断 SSE 流（保证真终态
+    仍能到达）。重放存储只是 `review_event` 表的投影，可按 seq 重建；已有看门狗新增
+    `repairTerminalGaps()`，状态已终态但终态事件缺失时原子补写一条并打 WARN 记录累计修复
+    次数。真实 MySQL 复现/验收输出见 `docs/ADR-0007-review-event-atomicity.md`。
 10. ~~**批注稿链路的源对象键没接通**~~ **已修复（Stage 12 后续）**：原 bug 是 Java 上传把源
     落在 `uploads/{id}-v{n}.docx` 而 Python render 按 `contracts/{id}/v{n}/source.docx` 取源，
     键约定没对上导致 `PLACEHOLDER_RENDER: reason=source-unavailable`。现采用方案 A——Java 按

@@ -44,10 +44,17 @@ public interface ReviewRepository extends JpaRepository<Review, String> {
      * MySQL 自己解析，规避这个绑定缺陷。GREATEST(COALESCE(...,:ts),:ts) 取「已有值与事件 ts 的较大者」，
      * 最终等价于 MAX(所有事件 ts)，与迁移回填、阶段 14 超时判定口径完全一致。
      */
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = "UPDATE review SET last_event_at = GREATEST(COALESCE(last_event_at, :ts), :ts) WHERE id = :id",
             nativeQuery = true)
     void updateLastEventAt(@Param("id") String id, @Param("ts") String ts);
+
+    /**
+     * 终态守护（方案 A 的补偿）：只取 id + status，不整行读——review 行含 pending_payload
+     * 这类大字段，看门狗每轮扫描不该把它们全捞进内存。
+     */
+    @Query("select r.id, r.status from Review r where r.status in :statuses")
+    List<Object[]> findTerminalReviews(@Param("statuses") Collection<String> statuses);
 
     /**
      * 按 id 批量取 last_event_at（阶段 14 超时回收：一次拿全页，避免每条审查各查一次 N+1）。

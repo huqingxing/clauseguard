@@ -98,7 +98,8 @@ class ReviewServiceTest {
         service = new ReviewService(
                 reviewRepository, reviewEventRepository, approvalRepository,
                 replayStore, agentClient, registry, mapper, contractRepository,
-                new TraceContextSupport(noTracer()), NoopTransactionManager.create());
+                new TraceContextSupport(noTracer()),
+                new ReviewEventWriter(reviewRepository, reviewEventRepository));
         // 仅 createReview 路径需要 save；其余测试不触发，故标为 lenient 避免严格模式报错。
         lenient().when(reviewRepository.save(any(Review.class))).thenAnswer(i -> i.getArgument(0));
     }

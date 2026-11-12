@@ -1,14 +1,21 @@
 package com.clauseguard.review;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.clauseguard.events.AgentEvent;
 import com.clauseguard.events.EventReplayStore;
+import com.clauseguard.events.StoredEvent;
 import com.clauseguard.review.domain.ReviewEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -16,6 +23,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -157,5 +165,178 @@ class ReviewWatchdogTest {
         order.verify(eventRepository).save(any(ReviewEvent.class));
         order.verify(replayStore).append(eq(reviewId), eq(10L), eq("run.failed"), anyString());
         order.verify(reviewService).fanoutSystemEvent(eq(reviewId), any(AgentEvent.class));
+    }
+
+    // ---- 阶段 4：终态缺口补偿（状态已终态、终态事件缺失 → 补一条 + WARN 记录修复次数）----
+
+    @Test
+    void terminalGapIsRepairedOnceAndWarnedWithRepairCount() {
+        String id = "r-gap";
+        when(reviewRepository.findTerminalReviews(anyCollection()))
+                .thenReturn(List.<Object[]>of(new Object[]{id, "COMPLETED"}));
+        when(eventRepository.findByReviewIdOrderBySeqAsc(id)).thenReturn(List.of());
+        when(eventRepository.maxSeq(id)).thenReturn(4L);
+        when(eventRepository.insertTerminalIfAbsent(eq(id), eq(5L), eq("run.completed"),
+                anyString(), anyString(), anyCollection())).thenReturn(1);
+
+        Logger log = (Logger) LoggerFactory.getLogger(ReviewWatchdog.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        log.addAppender(appender);
+        ReviewWatchdog.RepairResult result;
+        try {
+            result = watchdog().repairTerminalGaps();
+        } finally {
+            log.detachAppender(appender);
+            appender.stop();
+        }
+
+        assertThat(result.dbWritten()).isEqualTo(1);
+        assertThat(result.replayRestored()).isZero();
+        assertThat(result.failed()).isZero();
+        assertThat(result.totalRepaired()).isEqualTo(1);
+        verify(replayStore).append(eq(id), eq(5L), eq("run.completed"), anyString());
+        verify(reviewService).fanoutSystemEvent(eq(id), any(AgentEvent.class));
+        // 补写事件必须同步推进 last_event_at，否则阶段 13 的 MAX(review_event.ts) 口径又会对不上
+        verify(reviewRepository).updateLastEventAt(eq(id), anyString());
+        // 修复次数必须可观测：单轮计数 + 累计计数都要出现在 WARN 里
+        assertThat(appender.list).anySatisfy(e -> {
+            assertThat(e.getLevel()).isEqualTo(Level.WARN);
+            assertThat(e.getFormattedMessage()).contains("dbWritten=1").contains("累计修复次数=1");
+        });
+    }
+
+    @Test
+    void compensatedCompletedPayloadKeepsEventSchemaFields() {
+        String id = "r-schema";
+        when(reviewRepository.findTerminalReviews(anyCollection()))
+                .thenReturn(List.<Object[]>of(new Object[]{id, "COMPLETED"}));
+        when(eventRepository.findByReviewIdOrderBySeqAsc(id)).thenReturn(List.of());
+        when(eventRepository.maxSeq(id)).thenReturn(0L);
+        when(eventRepository.insertTerminalIfAbsent(eq(id), eq(1L), eq("run.completed"),
+                anyString(), anyString(), anyCollection())).thenReturn(1);
+
+        watchdog().repairTerminalGaps();
+
+        ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
+        verify(eventRepository).insertTerminalIfAbsent(eq(id), eq(1L), eq("run.completed"),
+                payload.capture(), anyString(), anyCollection());
+        // 不改事件 schema：run.completed 的必填字段齐全，没有私加字段
+        assertThat(payload.getValue())
+                .contains("\"type\":\"run.completed\"")
+                .contains("\"usage\"")
+                .contains("\"input_tokens\":0")
+                .contains("\"findings_count\":0")
+                .contains("\"quality\"")
+                .contains("\"verified_rate\":1.0")
+                .contains("\"degraded\":true");
+    }
+
+    @Test
+    void compensatedFailedPayloadUsesRunFailedShape() {
+        String id = "r-failed-gap";
+        when(reviewRepository.findTerminalReviews(anyCollection()))
+                .thenReturn(List.<Object[]>of(new Object[]{id, "FAILED"}));
+        when(eventRepository.findByReviewIdOrderBySeqAsc(id)).thenReturn(List.of());
+        when(eventRepository.maxSeq(id)).thenReturn(11L);
+        when(eventRepository.insertTerminalIfAbsent(eq(id), eq(12L), eq("run.failed"),
+                anyString(), anyString(), anyCollection())).thenReturn(1);
+
+        watchdog().repairTerminalGaps();
+
+        ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
+        verify(eventRepository).insertTerminalIfAbsent(eq(id), eq(12L), eq("run.failed"),
+                payload.capture(), anyString(), anyCollection());
+        assertThat(payload.getValue())
+                .contains("\"type\":\"run.failed\"")
+                .contains("\"code\":\"TERMINAL_EVENT_REPAIRED\"")
+                .contains("\"retryable\":false");
+    }
+
+    @Test
+    void secondScanIsIdempotentAndDoesNotDoubleWrite() {
+        String id = "r-idem";
+        when(reviewRepository.findTerminalReviews(anyCollection()))
+                .thenReturn(List.<Object[]>of(new Object[]{id, "FAILED"}));
+        when(eventRepository.findByReviewIdOrderBySeqAsc(id))
+                .thenReturn(List.of(terminalRow(id, 5, "run.failed")));
+        when(replayStore.replaySince(id, -1))
+                .thenReturn(List.of(new StoredEvent(5, "run.failed", "{}")));
+
+        ReviewWatchdog dog = watchdog();
+        ReviewWatchdog.RepairResult first = dog.repairTerminalGaps();
+        ReviewWatchdog.RepairResult second = dog.repairTerminalGaps();
+
+        assertThat(first.dbWritten()).isZero();
+        assertThat(first.replayRestored()).isZero();
+        assertThat(second.totalRepaired()).isZero();
+        verify(eventRepository, never()).insertTerminalIfAbsent(
+                anyString(), anyLong(), anyString(), anyString(), anyString(), anyCollection());
+    }
+
+    @Test
+    void missingProjectionIsRestoredFromDbWithoutWritingAnotherRow() {
+        String id = "r-projection";
+        when(reviewRepository.findTerminalReviews(anyCollection()))
+                .thenReturn(List.<Object[]>of(new Object[]{id, "COMPLETED"}));
+        when(eventRepository.findByReviewIdOrderBySeqAsc(id))
+                .thenReturn(List.of(terminalRow(id, 3, "run.completed")));
+        when(replayStore.replaySince(id, -1)).thenReturn(List.of());
+
+        ReviewWatchdog.RepairResult result = watchdog().repairTerminalGaps();
+
+        assertThat(result.dbWritten()).isZero();
+        assertThat(result.replayRestored()).isEqualTo(1);
+        assertThat(result.totalRepaired()).isEqualTo(1);
+        verify(replayStore).append(eq(id), eq(3L), eq("run.completed"), anyString());
+        verify(eventRepository, never()).insertTerminalIfAbsent(
+                anyString(), anyLong(), anyString(), anyString(), anyString(), anyCollection());
+    }
+
+    @Test
+    void conditionalInsertLosingRaceWritesNothing() {
+        String id = "r-race-repair";
+        when(reviewRepository.findTerminalReviews(anyCollection()))
+                .thenReturn(List.<Object[]>of(new Object[]{id, "FAILED"}));
+        when(eventRepository.findByReviewIdOrderBySeqAsc(id)).thenReturn(List.of());
+        when(eventRepository.maxSeq(id)).thenReturn(9L);
+        // 另一个副本已经抢先补过：条件 INSERT 返回 0 行
+        when(eventRepository.insertTerminalIfAbsent(eq(id), eq(10L), eq("run.failed"),
+                anyString(), anyString(), anyCollection())).thenReturn(0);
+
+        ReviewWatchdog.RepairResult result = watchdog().repairTerminalGaps();
+
+        assertThat(result.dbWritten()).isZero();
+        assertThat(result.totalRepaired()).isZero();
+        verify(replayStore, never()).append(anyString(), anyLong(), anyString(), anyString());
+        verify(reviewService, never()).fanoutSystemEvent(anyString(), any(AgentEvent.class));
+    }
+
+    @Test
+    void oneFailedRepairDoesNotAbortTheRestOfTheBatch() {
+        when(reviewRepository.findTerminalReviews(anyCollection()))
+                .thenReturn(List.<Object[]>of(new Object[]{"r-bad", "FAILED"}, new Object[]{"r-good", "COMPLETED"}));
+        when(eventRepository.findByReviewIdOrderBySeqAsc("r-bad"))
+                .thenThrow(new RuntimeException("db hiccup"));
+        when(eventRepository.findByReviewIdOrderBySeqAsc("r-good")).thenReturn(List.of());
+        when(eventRepository.maxSeq("r-good")).thenReturn(2L);
+        when(eventRepository.insertTerminalIfAbsent(eq("r-good"), eq(3L), eq("run.completed"),
+                anyString(), anyString(), anyCollection())).thenReturn(1);
+
+        ReviewWatchdog.RepairResult result = watchdog().repairTerminalGaps();
+
+        assertThat(result.failed()).isEqualTo(1);
+        assertThat(result.dbWritten()).isEqualTo(1);
+        assertThat(result.totalRepaired()).isEqualTo(1);
+    }
+
+    private static ReviewEvent terminalRow(String reviewId, long seq, String type) {
+        ReviewEvent event = new ReviewEvent();
+        event.setReviewId(reviewId);
+        event.setSeq(seq);
+        event.setType(type);
+        event.setPayload("{\"seq\":" + seq + ",\"type\":\"" + type + "\"}");
+        event.setTs(Instant.parse("2026-10-28T01:00:00Z"));
+        return event;
     }
 }

@@ -20,6 +20,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 审查看门狗（Stage 14）：把「长时间没有任何事件的 RUNNING」自动收敛到 FAILED。
@@ -43,7 +45,11 @@ public class ReviewWatchdog {
 
     private static final Logger logger = LoggerFactory.getLogger(ReviewWatchdog.class);
     private static final String TYPE_RUN_FAILED = "run.failed";
+    private static final String TYPE_RUN_COMPLETED = "run.completed";
+    private static final Set<String> TERMINAL_TYPES = Set.of(TYPE_RUN_COMPLETED, TYPE_RUN_FAILED);
+    private static final List<String> TERMINAL_STATUSES = List.of("COMPLETED", "FAILED");
     private static final String CODE_REVIEW_TIMEOUT = "REVIEW_TIMEOUT";
+    private static final String CODE_TERMINAL_REPAIRED = "TERMINAL_EVENT_REPAIRED";
 
     private final ReviewRepository reviewRepository;
     private final ReviewEventRepository eventRepository;
@@ -51,6 +57,8 @@ public class ReviewWatchdog {
     private final ReviewService reviewService;
     private final ObjectMapper mapper;
     private final Duration timeout;
+    /** 累计修复次数：单轮 WARN 看不出「是不是反复在补同一类洞」，累计值让补偿本身可观测。 */
+    private final AtomicLong totalRepaired = new AtomicLong();
 
     /** UTC 墙钟格式化（与 ReviewRepository 看门狗查询、updateLastEventAt 写入口径一致）。 */
     private static final DateTimeFormatter UTC_FMT =
@@ -110,6 +118,122 @@ public class ReviewWatchdog {
             }
         }
         return new ScanResult(candidates.size(), killed, skipped);
+    }
+
+    /**
+     * 终态缺口守护：状态已到 COMPLETED/FAILED，却没有对应终态事件时补写一条并打 WARN 记录修复次数。
+     *
+     * <p>为什么方案 A 之后仍然要这一层：事务保证了「同一次写入」不分叉，但兜不住历史脏数据、
+     * 进程在 DB 提交与投影写入之间崩溃、以及重放存储被清/过期（Redis Stream MAXLEN、重启即丢的
+     * 内存实现）这些情况。DB 的 review_event 是事实源：缺行就补行，缺投影就按 seq 重建。
+     *
+     * <p>补写用条件 INSERT（WHERE NOT EXISTS），多副本同时扫到同一笔也只会有一条；
+     * 已写过的行在下一轮会被检测到，绝不重复补。
+     *
+     * <p>这里不整体吞异常：每条失败都会单独 WARN 并计入 failed，累计修复次数与失败数一起打出来，
+     * 不会把「补偿没做成」伪装成「本轮无缺口」。MySQL 下单条语句失败不会污染整个事务，
+     * 因此本轮其余审查继续尝试；若换用「一条语句失败即中止整个事务」的数据库，
+     * 需要改成逐条 REQUIRES_NEW 提交（本阶段只跑 MySQL）。
+     */
+    @Scheduled(fixedDelayString = "${clauseguard.review.watchdog.interval:5m}")
+    @Transactional
+    public RepairResult repairTerminalGaps() {
+        int dbWritten = 0;
+        int replayRestored = 0;
+        int failed = 0;
+        List<Object[]> rows = reviewRepository.findTerminalReviews(TERMINAL_STATUSES);
+        for (Object[] row : rows) {
+            String reviewId = String.valueOf(row[0]);
+            String status = String.valueOf(row[1]);
+            try {
+                ReviewEvent terminal = lastTerminal(eventRepository.findByReviewIdOrderBySeqAsc(reviewId));
+                if (terminal == null) {
+                    dbWritten += insertCompensatedTerminal(reviewId, status);
+                } else if (!hasTerminalInReplay(reviewId)) {
+                    // 行在、投影丢了（Redis 降级/进程重启）：按 DB 里那条原样补回重放存储
+                    replayStore.append(reviewId, terminal.getSeq(), terminal.getType(), terminal.getPayload());
+                    replayRestored++;
+                }
+            } catch (RuntimeException ex) {
+                failed++;
+                logger.warn("review watchdog: 终态补偿失败 review={} status={} err={}",
+                        reviewId, status, ex.getMessage());
+            }
+        }
+        long total = totalRepaired.addAndGet((long) dbWritten + replayRestored);
+        if (dbWritten + replayRestored + failed > 0) {
+            logger.warn("review watchdog: 终态缺口修复次数 本轮 dbWritten={} replayRestored={} "
+                            + "failed={} 累计修复次数={} scanned={}",
+                    dbWritten, replayRestored, failed, total, rows.size());
+        }
+        return new RepairResult(dbWritten, replayRestored, failed, total);
+    }
+
+    /** 返回受影响行数（0 = 别的副本已经补过），补成功时同步进投影并扇出给在线订阅。 */
+    private int insertCompensatedTerminal(String reviewId, String status) {
+        long seq = eventRepository.maxSeq(reviewId) + 1;
+        Instant now = Instant.now();
+        String type = "COMPLETED".equals(status) ? TYPE_RUN_COMPLETED : TYPE_RUN_FAILED;
+        String payload = writeTerminalPayload(seq, now.toString(), type);
+        String tsUtc = UTC_FMT.format(now);
+        int affected = eventRepository.insertTerminalIfAbsent(
+                reviewId, seq, type, payload, tsUtc, TERMINAL_TYPES);
+        if (affected == 1) {
+            // 补写事件也必须推进 last_event_at：阶段 13 定义它等于 MAX(review_event.ts)，
+            // 只插事件不动时间戳会给阶段 14 超时判定留下另一处对不上的事实。
+            reviewRepository.updateLastEventAt(reviewId, tsUtc);
+            replayStore.append(reviewId, seq, type, payload);
+            reviewService.fanoutSystemEvent(reviewId, new AgentEvent(seq, now.toString(), type, payload));
+            logger.info("review watchdog: 补写终态事件 review={} status={} type={} seq={}",
+                    reviewId, status, type, seq);
+        }
+        return affected;
+    }
+
+    /** 补写事件严格使用 events.schema.json 的 run.completed / run.failed 字段，不改契约。 */
+    private String writeTerminalPayload(long seq, String ts, String type) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("seq", seq);
+        body.put("ts", ts);
+        body.put("type", type);
+        if (TYPE_RUN_COMPLETED.equals(type)) {
+            Map<String, Object> usage = new LinkedHashMap<>();
+            usage.put("input_tokens", 0);
+            usage.put("output_tokens", 0);
+            usage.put("cost_cny", 0);
+            body.put("usage", usage);
+            body.put("findings_count", 0);
+            body.put("degraded", true);
+            Map<String, Object> quality = new LinkedHashMap<>();
+            quality.put("verified_rate", 1.0);
+            quality.put("rework_count", 0);
+            quality.put("unverified_count", 0);
+            body.put("quality", quality);
+        } else {
+            body.put("code", CODE_TERMINAL_REPAIRED);
+            body.put("message", "状态已到终态但终态事件缺失，由看门狗补写");
+            body.put("retryable", false);
+        }
+        try {
+            return mapper.writeValueAsString(body);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("serialize repaired terminal event failed", ex);
+        }
+    }
+
+    private static ReviewEvent lastTerminal(List<ReviewEvent> events) {
+        for (int i = events.size() - 1; i >= 0; i--) {
+            ReviewEvent event = events.get(i);
+            if (TERMINAL_TYPES.contains(event.getType())) {
+                return event;
+            }
+        }
+        return null;
+    }
+
+    private boolean hasTerminalInReplay(String reviewId) {
+        return replayStore.replaySince(reviewId, -1).stream()
+                .anyMatch(event -> TERMINAL_TYPES.contains(event.type()));
     }
 
     /**
@@ -182,5 +306,9 @@ public class ReviewWatchdog {
     }
 
     public record ScanResult(int scanned, int killed, int skipped) {
+    }
+
+    /** dbWritten=补的 DB 行，replayRestored=重建的投影条数，failed=本轮补偿失败数。 */
+    public record RepairResult(int dbWritten, int replayRestored, int failed, long totalRepaired) {
     }
 }

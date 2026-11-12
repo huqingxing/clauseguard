@@ -13,6 +13,8 @@
 | [0003](ADR-0003-citation-whitelist.md) | 引用白名单 | 三道闸强制引用来自检索结果；丢空则降级 `unverified` 而非删除结论 |
 | [0004](ADR-0004-interrupt-resume.md) | 中断恢复 | 审批断点在图内 + Postgres checkpoint + 独立 resume 端点，seq 不写图状态 |
 | [0005](ADR-0005-role-split-and-admin-hash.md) | 按角色拆两端 | 用户端=提交者 / 管理端=审核者；hash 路由只为省服务端回退；用户端接口「暂不」鉴权是登记的取舍而非漏配 |
+| [0006](ADR-0006-review-thread-scope.md) | 单次审查一个 thread | `thread_id = run:{run_id}` 唯一构造；session 仍按合同版本聚合；旧 checkpoint 只读不迁移 |
+| [0007](ADR-0007-review-event-atomicity.md) | 状态与事件同事务 | 方案 A：一个 `@Transactional` 写状态+事件；终态优先补偿；看门狗补终态缺口并 WARN 计数 |
 
 ## 阶段验收报告
 

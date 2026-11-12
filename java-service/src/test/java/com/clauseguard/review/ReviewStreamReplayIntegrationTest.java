@@ -93,6 +93,28 @@ class ReviewStreamReplayIntegrationTest {
                 .andExpect(content().string(not(containsString("node.started"))));
     }
 
+    /**
+     * 验收「断线重放：客户端 ?since=0 能拿到终态事件」。
+     * since=0 的语义是「已看到 seq 0」，因此回放 seq>0 的全部事件，终态必须在其中，
+     * 且 SSE 收到终态后直接 complete（客户端不会永远停在「等待审批」）。
+     */
+    @Test
+    void sinceZeroReplaysTerminalEvent() throws Exception {
+        String reviewId = "55555555-5555-5555-5555-555555555555";
+        replayStore.append(reviewId, 1, "node.started", "{\"seq\":1,\"type\":\"node.started\"}");
+        replayStore.append(reviewId, 2, "node.finished", "{\"seq\":2,\"type\":\"node.finished\"}");
+        replayStore.append(reviewId, 3, "run.completed", "{\"seq\":3,\"type\":\"run.completed\"}");
+
+        Review review = new Review();
+        review.setId(reviewId);
+        when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
+
+        mockMvc.perform(get("/api/v1/reviews/{id}/stream", reviewId).param("since", "0"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("node.started")))
+                .andExpect(content().string(containsString("run.completed")));
+    }
+
     @Test
     void sinceQueryWinsOverLastEventIdHeader() throws Exception {
         String reviewId = "44444444-4444-4444-4444-444444444444";
@@ -153,11 +175,12 @@ class ReviewStreamReplayIntegrationTest {
                 com.fasterxml.jackson.databind.ObjectMapper mapper,
                 com.clauseguard.contract.ContractRepository contractRepository,
                 com.clauseguard.observability.TraceContextSupport traceSupport) {
-            // WebMvcTest 切片没有数据源/事务管理器，写入事务用就地执行的空实现顶替
+            // WebMvcTest 切片没有数据源/事务管理器：ReviewEventWriter 直接 new（无代理，
+            // @Transactional 不生效），两个 repository 都是 @MockBean，写入路径仍会被真实执行到。
             return new ReviewService(
                     reviewRepository, reviewEventRepository, approvalRepository,
                     replayStore, agentClient, circuitBreakerRegistry, mapper, contractRepository,
-                    traceSupport, NoopTransactionManager.create());
+                    traceSupport, new ReviewEventWriter(reviewRepository, reviewEventRepository));
         }
     }
 }
