@@ -35,6 +35,11 @@
 
 关键设计取舍见 [docs/ADR](docs/README.md)：双栈分工、并行拓扑、引用白名单、中断恢复。
 
+**检索子系统**（阶段 7）：法条库落在 PostgreSQL + pgvector，采用 BM25 + 向量双路召回、RRF 融合；
+切分策略与 embedding 档位由 `lab/` 实验台的 15 组矩阵选出（80 条标注查询，两次运行指标一致），
+结论写入 `python-agent/config/retrieval.yaml` 供线上读取；检索经 Java 的 MCP 工具暴露，
+失败时降级为 `unverified` 而不阻断审查。详见 [docs/rag-lab.md](docs/rag-lab.md)。
+
 ## 快速开始（3 条命令）
 
 需要：JDK 21、Node 22（`web/package.json` 的 `engines` 要求 ≥ 22.18：`node --test` 跑 `.ts`
@@ -261,7 +266,9 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
 
 ## 已知限制
 
-1. **检索是 mock**：`app/tools/*` 返回固定语料（显式 `mock_` 前缀 + TODO），未接 pgvector 真实检索。
+1. **检索默认走真实法条库**：`app/tools/*` 仅在 `retrieval.mode=mock` 时返回固定语料；
+   默认 live 由 `python-agent/retrieval` 检索 pgvector 法条库（阶段 7 验收见
+   [docs/rag-lab.md](docs/rag-lab.md)）。
 2. **评测 examiner 是确定性替身**：100% 召回证明的是链路无损耗，不是模型能力；换真模型只需换
    `build_eval_agent_factory` 里的模型。
 3. **条款定位 IoU 恒 1.0**：合成语料里一条款=一句，切分后 span 恰等于标注 span，区分度有限。
@@ -293,12 +300,15 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
     事件插入失败而状态已是 `COMPLETED`，用户端重放看不到终态、永远停在「等待审批」。
     已用 `V4__widen_event_payload.sql` 把列放宽到 MEDIUMTEXT 消除触发条件，
     但「写事件失败会导致状态与事件不一致」这个结构性问题仍在。
-11. **批注稿链路的源对象键没接通（默认配置下没有「下载批注稿」）**：Java 上传把源 docx
-    落在 `uploads/{id}-v{n}.docx` 并把 `source.object_key` 透传给 Python；Python 的 render
-    只按 `contracts/{id}/v{n}/source.docx` 去对象存储取源。两边键约定没对上，render 走
-    `PLACEHOLDER_RENDER: reason=source-unavailable`，结果页就只剩一个空产物。本机验收是把
-    源 docx 按约定键摆进 `local_dir` 才跑出批注稿的——修法是让 Java 按同一套约定键写入对象
-    存储（Python 侧不动），或者让 render 改用透传的 `source.download_url`。
+11. ~~**批注稿链路的源对象键没接通**~~ **已修复（Stage 12 后续）**：原 bug 是 Java 上传把源
+    落在 `uploads/{id}-v{n}.docx` 而 Python render 按 `contracts/{id}/v{n}/source.docx` 取源，
+    键约定没对上导致 `PLACEHOLDER_RENDER: reason=source-unavailable`。现采用方案 A——Java 按
+    同一套约定键 `contracts/{id}/v{n}/source.{ext}` 写入（Python 侧不动，仍由 `source_object_key`
+    生成键），键约定集中定义在 `contracts/storage-keys.md` 并由 `ContractStorageKeysTest` 与
+    `test_object_key_conventions` 双向守门。默认配置下接通的前提：`java-service` 的默认上传根
+    `./uploads`（相对其启动目录）与 Python 的 `CLAUSEGUARD_MINIO_LOCAL_DIR` 指向同一目录——
+    `make run-py` 与 `deploy/dev/start-agent-*.ps1` 已自动对齐到 `java-service/uploads`；历史遗留键
+    `{id}-v{n}.{ext}` 仍作只读回退（命中打 WARN，不报错）。
 12. **后端不可用时提示仍受代理口径影响**：列表页/工作台现在会把失败翻译成人话
     （`utils/error.ts`），失败时不再冒充「还没有合同」空态；结果页在重连 3 次（约 7 秒）
     仍收不到事件时明确显示「连不上服务，请确认 java-service 是否在 8080 运行」。

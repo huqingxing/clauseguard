@@ -83,7 +83,11 @@ class StorageClient(Protocol):
 
 
 def source_object_key(contract_id: str, version: int, ext: str) -> str:
-    """源合同对象键约定：contracts/{contract_id}/v{version}/source.{ext}。"""
+    """源合同对象键约定：contracts/{contract_id}/v{version}/source.{ext}。
+
+    单一事实来源的 Python 端实现（约定见 contracts/storage-keys.md）；必须与 Java 端
+    ``ContractStorageKeys.sourceKey`` 逐字一致。改格式只改本函数 + Java 一处 + 两守门测试。
+    """
     return f"contracts/{contract_id}/v{version}/source.{ext}"
 
 
@@ -362,11 +366,18 @@ def is_docx(data: bytes) -> bool:
     return data[:4] == b"PK\x03\x04"
 
 
+def _legacy_source_key(contract_id: str, version: int, ext: str) -> str:
+    """历史遗留键（修复前 Java 落点）：{contract_id}-v{version}.{ext}，仅作只读回退。"""
+    return f"{contract_id}-v{version}.{ext}"
+
+
 def source_candidates(contract_id: str, version: int) -> list[str]:
-    """源对象键候选顺序：先 docx 后 pdf（本阶段只回写 docx）。"""
+    """源对象键候选顺序：新约定键优先（docx→pdf），再回退历史遗留键（旧上传）。"""
     return [
         source_object_key(contract_id, version, "docx"),
         source_object_key(contract_id, version, "pdf"),
+        _legacy_source_key(contract_id, version, "docx"),
+        _legacy_source_key(contract_id, version, "pdf"),
     ]
 
 
@@ -400,14 +411,22 @@ async def resolve_source_from_minio(
 def resolve_source_from_local(
     settings: MinioSettings, contract_id: str, version: int
 ) -> ResolvedSource | None:
-    """本地开发：从 local_dir 下的约定目录读源合同（glob source.*）。"""
+    """本地开发：从 local_dir 下按候选键读源合同（新约定键优先，再回退历史遗留键）。"""
     if not settings.local_dir:
         return None
-    directory = Path(settings.local_dir) / "contracts" / contract_id / f"v{version}"
-    if not directory.is_dir():
-        return None
-    for candidate in sorted(directory.glob("source.*")):
-        data = candidate.read_bytes()
-        doc_type = "docx" if is_docx(data) else candidate.suffix.lstrip(".").lower()
-        return ResolvedSource(data=data, key=str(candidate), doc_type=doc_type)
+    root = Path(settings.local_dir)
+    for key in source_candidates(contract_id, version):
+        safe = key.replace("\\", "/").lstrip("/")
+        if ".." in safe.split("/"):
+            continue
+        path = root / safe
+        if path.is_file():
+            data = path.read_bytes()
+            doc_type = "docx" if is_docx(data) else (path.suffix.lstrip(".").lower() or "pdf")
+            if key != source_object_key(contract_id, version, doc_type):
+                logger.warning(
+                    "源合同命中历史遗留键 %s（新约定键缺失），建议重新上传以迁移到 %s",
+                    key, source_object_key(contract_id, version, doc_type),
+                )
+            return ResolvedSource(data=data, key=str(path), doc_type=doc_type)
     return None

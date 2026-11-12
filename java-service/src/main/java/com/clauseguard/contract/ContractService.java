@@ -84,7 +84,7 @@ public class ContractService {
         contract.setFilename(sanitizeFilename(file.getOriginalFilename()));
         contract.setContentType(contentTypeOf(extension));
         contract.setSizeBytes(file.getSize());
-        contract.setStorageKey(storageKeyFor(contractId, nextVersion, extension));
+        contract.setStorageKey(ContractStorageKeys.sourceKey(contractId, nextVersion, extension));
         contract.setCreatedAt(Instant.now());
         writeFile(file, contract.getStorageKey());
         Contract saved = repository.save(contract);
@@ -125,8 +125,9 @@ public class ContractService {
     }
 
     /**
-     * 读取合同版本内容。storage_key 只允许单段文件名（UUID 生成），出现路径分隔符
-     * 即视为存储键被污染，直接拒绝——防路径穿越。
+     * 读取合同版本内容。键是受控约定字符串（contracts/... 或历史单段文件名），只防
+     * 目录穿越（{@code ..}）与越界写（落在 uploadRoot 之外）；约定键本身含 {@code /}
+     * 层级，不再视为非法——这是「批注稿链路」修复后源合同的新落点。
      */
     public Resource loadContent(String contractId, Integer version) {
         Contract contract = version == null
@@ -134,11 +135,11 @@ public class ContractService {
                 : repository.findByIdAndVersion(contractId, version)
                         .orElseThrow(() -> new ContractNotFoundException(contractId + " v" + version));
         String key = contract.getStorageKey();
-        if (key.contains("/") || key.contains("\\") || key.contains("..")) {
-            throw new ContractUploadException("存储键非法: " + key);
-        }
         Path path = uploadRoot.resolve(key).normalize();
-        if (!path.startsWith(uploadRoot) || !Files.isRegularFile(path)) {
+        if (key.contains("..") || !path.startsWith(uploadRoot) || !Files.isRegularFile(path)) {
+            if (key.contains("..")) {
+                throw new ContractUploadException("存储键非法: " + key);
+            }
             throw new ContractNotFoundException(contractId + " 的文件不存在");
         }
         return new FileSystemResource(path);
@@ -146,18 +147,17 @@ public class ContractService {
 
     private void writeFile(MultipartFile file, String storageKey) {
         Path target = uploadRoot.resolve(storageKey).normalize();
-        if (!target.startsWith(uploadRoot)) {
+        if (storageKey.contains("..") || !target.startsWith(uploadRoot)) {
             throw new ContractUploadException("存储键非法: " + storageKey);
         }
-        try (InputStream in = file.getInputStream()) {
-            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+        try {
+            Files.createDirectories(target.getParent());
+            try (InputStream in = file.getInputStream()) {
+                Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException ex) {
             throw new ContractUploadException("写入合同文件失败: " + ex.getMessage());
         }
-    }
-
-    private static String storageKeyFor(String contractId, int version, String extension) {
-        return contractId + "-v" + version + "." + extension;
     }
 
     private static String extensionOf(String filename) {

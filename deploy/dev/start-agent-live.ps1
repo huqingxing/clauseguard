@@ -53,6 +53,9 @@ $env:CLAUSEGUARD_AGENT_LLM_BASE_URL   = 'https://dashscope.aliyuncs.com/compatib
 $env:CLAUSEGUARD_AGENT_LLM_MODEL      = 'qwen-plus'
 # 本地联调不用 Postgres checkpoint 时置空；需要跨进程恢复审批态就填真实 DSN
 $env:CLAUSEGUARD_AGENT_PG_DSN         = ''
+# 共享存储根：与 java-service 默认上传根（./uploads，相对其启动目录）对齐；Java 上传源
+# 落点 = 此处 + contracts/{id}/v{n}/source.docx，Python render 据此取源（见 contracts/storage-keys.md）。
+$env:CLAUSEGUARD_MINIO_LOCAL_DIR      = Join-Path $root 'java-service' 'uploads'
 # 本机若开了系统代理，Python 调 Java 会走代理导致 502
 $env:NO_PROXY   = 'localhost,127.0.0.1'
 $env:HTTP_PROXY  = ''

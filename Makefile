@@ -70,9 +70,12 @@ trace-demo: demo-contract
 
 # 本地起 Python 编排服务（无密钥演示/压测用确定性替身；生产去掉 MODEL_BACKEND 即真实模型）。
 MODEL_BACKEND ?= mock
+# 注意：CLAUSEGUARD_MINIO_LOCAL_DIR 指向 java-service 的默认上传根（./uploads，相对其启动目录），
+# 与 Java 上传落点对齐——这是「下载批注稿」链路默认能跑通的关键（见 contracts/storage-keys.md）。
 run-py:
 	cd python-agent && CLAUSEGUARD_AGENT_MODEL_BACKEND=$(MODEL_BACKEND) \
-		CLAUSEGUARD_AGENT_PG_DSN= uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+		CLAUSEGUARD_AGENT_PG_DSN= CLAUSEGUARD_MINIO_LOCAL_DIR=../java-service/uploads \
+		uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # 压测：20 并发 / 5 分钟，产出 eval/out/bench*.csv 与 bench-tokens.json（docs/benchmark.md 的原料）。
 # 需先另开一个终端跑 make run-py。

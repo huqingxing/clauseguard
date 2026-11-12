@@ -76,7 +76,15 @@ async def resolve_source(
     source = await resolve_source_from_minio(settings, contract_id, version)
     if source is not None:
         return source
-    return resolve_source_from_local(settings, contract_id, version)
+    source = resolve_source_from_local(settings, contract_id, version)
+    if source is not None:
+        return source
+    logger.warning(
+        "源合同缺失：contract=%s v=%s，未找到新约定键也未找到历史遗留键；"
+        "将降级为 PLACEHOLDER_RENDER（不报错，等待重新上传或补齐存储）",
+        contract_id, version,
+    )
+    return None
 
 
 def resolve_storage(config: RunnableConfig) -> StorageClient | None:

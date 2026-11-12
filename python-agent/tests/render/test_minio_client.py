@@ -30,6 +30,7 @@ from app.clients.minio_client import (
     presigned_url,
     resolve_source_from_local,
     signed_put_headers,
+    source_candidates,
     source_object_key,
 )
 
@@ -285,3 +286,36 @@ def test_resolve_source_from_local_convention(tmp_path) -> None:
 def test_resolve_source_from_local_missing(tmp_path) -> None:
     assert resolve_source_from_local(_settings(local_dir=str(tmp_path)), "nope", 1) is None
     assert resolve_source_from_local(_settings(local_dir=""), "c-9", 2) is None
+
+
+def test_source_candidates_order_new_before_legacy() -> None:
+    """候选顺序：新约定键(docx→pdf) 优先于历史遗留键(docx→pdf)。"""
+    cands = source_candidates("c-1", 3)
+    assert cands == [
+        "contracts/c-1/v3/source.docx",
+        "contracts/c-1/v3/source.pdf",
+        "c-1-v3.docx",
+        "c-1-v3.pdf",
+    ]
+
+
+def test_resolve_source_from_local_falls_back_to_legacy(tmp_path, caplog) -> None:
+    """新约定键缺失时回退历史遗留键 {id}-v{n}.{ext}，并打 WARN（不报错）。"""
+    # 仅放置旧格式文件（模拟修复前的上传落点）。
+    (tmp_path / "c-9-v2.docx").write_bytes(b"PK\x03\x04fake")
+    resolved = resolve_source_from_local(_settings(local_dir=str(tmp_path)), "c-9", 2)
+    assert resolved is not None
+    assert resolved.doc_type == "docx"
+    assert resolved.key.endswith("c-9-v2.docx")
+    assert any("历史遗留键" in r.message for r in caplog.records)
+
+
+def test_resolve_source_from_local_prefers_new_over_legacy(tmp_path) -> None:
+    """新约定键与遗留键同时存在时，优先新约定键。"""
+    (tmp_path / "contracts" / "c-9" / "v2").mkdir(parents=True)
+    (tmp_path / "contracts" / "c-9" / "v2" / "source.docx").write_bytes(b"PK\x03\x04new")
+    (tmp_path / "c-9-v2.docx").write_bytes(b"PK\x03\x04old")
+    resolved = resolve_source_from_local(_settings(local_dir=str(tmp_path)), "c-9", 2)
+    assert resolved is not None
+    assert resolved.key.endswith("source.docx")  # 新键优先，而非遗留键
+

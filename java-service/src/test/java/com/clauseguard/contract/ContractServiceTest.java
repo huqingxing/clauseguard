@@ -50,7 +50,7 @@ class ContractServiceTest {
 
         assertThat(saved.getVersion()).isEqualTo(1);
         assertThat(saved.getFilename()).isEqualTo("采购合同.pdf");
-        assertThat(saved.getStorageKey()).isEqualTo(saved.getId() + "-v1.pdf");
+        assertThat(saved.getStorageKey()).isEqualTo("contracts/" + saved.getId() + "/v1/source.pdf");
         // 文件真实落盘且字节一致（不是「看起来能跑」的假实现）。
         Path onDisk = tempDir.resolve(saved.getStorageKey());
         assertThat(Files.exists(onDisk)).isTrue();
@@ -75,7 +75,7 @@ class ContractServiceTest {
         // 改稿重审：同 id 新版本，旧版本行不删（增量 diff 的基线还在）。
         assertThat(saved.getId()).isEqualTo("c-1");
         assertThat(saved.getVersion()).isEqualTo(2);
-        assertThat(saved.getStorageKey()).isEqualTo("c-1-v2.pdf");
+        assertThat(saved.getStorageKey()).isEqualTo("contracts/c-1/v2/source.pdf");
     }
 
     @Test
@@ -162,7 +162,7 @@ class ContractServiceTest {
         contract.setFilename(filename);
         contract.setContentType("application/pdf");
         contract.setSizeBytes(10);
-        contract.setStorageKey(id + "-v" + version + ".pdf");
+        contract.setStorageKey("contracts/" + id + "/v" + version + "/source.pdf");
         contract.setCreatedAt(Instant.now());
         return contract;
     }

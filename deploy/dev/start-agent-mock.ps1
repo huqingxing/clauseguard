@@ -36,6 +36,10 @@ function Test-LocalPort([int]$Port) {
 # ---------- 环境变量（不需要密钥） ----------
 $env:CLAUSEGUARD_AGENT_MODEL_BACKEND = 'mock'
 $env:CLAUSEGUARD_AGENT_PG_DSN        = ''
+# 共享存储根：与 java-service 默认上传根（./uploads，相对其启动目录）对齐；
+# Java 上传源落点 = 此处 + contracts/{id}/v{n}/source.docx，Python render 据此取源
+# （见 contracts/storage-keys.md）。这是「下载批注稿」默认链路接通的关键。
+$env:CLAUSEGUARD_MINIO_LOCAL_DIR     = Join-Path $root 'java-service' 'uploads'
 $env:NO_PROXY    = 'localhost,127.0.0.1'
 $env:HTTP_PROXY  = ''
 $env:HTTPS_PROXY = ''
