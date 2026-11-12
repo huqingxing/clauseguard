@@ -3,6 +3,9 @@ package com.clauseguard.admin;
 import com.clauseguard.api.model.AdminHealth;
 import com.clauseguard.api.model.ApprovalQueueItem;
 import com.clauseguard.api.model.ApprovalQueuePage;
+import com.clauseguard.api.model.EvalSummary;
+import com.clauseguard.eval.EvalController;
+import com.clauseguard.eval.EvalService;
 import com.clauseguard.security.SecurityConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 假身份，绕过了 UserDetailsService 和 BCrypt。手写单行代码就能走真链路，也就不用为了
  * 一个注解引入 spring-security-test（版本表只允许新增 starter-security）。
  */
-@WebMvcTest(AdminController.class)
+@WebMvcTest(controllers = {AdminController.class, EvalController.class})
 @Import(SecurityConfig.class)
 class AdminControllerTest {
 
@@ -47,6 +50,9 @@ class AdminControllerTest {
 
     @MockBean
     private ApprovalQueueService approvalQueueService;
+
+    @MockBean
+    private EvalService evalService;
 
     private static String basic(String username, String password) {
         return "Basic " + Base64.getEncoder()
@@ -168,5 +174,32 @@ class AdminControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, basic("admin", "admin123")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_APPROVAL_STATUS"));
+    }
+
+    // ---- 阶段 14：评测看板（成本结构）纳入 ADMIN 保护 ----
+
+    @Test
+    void evalSummaryRejectsAnonymousWith401Json() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/eval/summary"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void evalSummaryRejectsNonAdminWith403Json() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/eval/summary")
+                        .header(HttpHeaders.AUTHORIZATION, basic("user", "user123")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void evalSummaryReturns200ForAdmin() throws Exception {
+        when(evalService.summary()).thenReturn(new EvalSummary());
+
+        mockMvc.perform(get("/api/v1/admin/eval/summary")
+                        .header(HttpHeaders.AUTHORIZATION, basic("admin", "admin123")))
+                .andExpect(status().isOk());
     }
 }

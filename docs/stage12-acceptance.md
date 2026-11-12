@@ -615,12 +615,13 @@ console 告警、样式不生效），改用 `type="info"` + `.muted` 类；补�
    建议修法二选一：`thread_id` 带上 `run_id`（`run_registry` 已按 run 存 thread_id，
    resume 不受影响），或在开跑前清掉该 thread 的 checkpoint。**属 Stage 9 设计决策，
    本阶段未擅自变更。**
-2. **管理端有鉴权，用户端没有**：阶段 3 给 `/api/v1/admin/**` 上了 `SecurityFilterChain`
-   （HTTP BASIC / ADMIN 角色 / 401·403 都是 JSON / STATELESS），**前端登录卡只是体验，真正的门在后端**，
-   `curl` 不带凭证会被 401 挡住。但 `/api/v1/**` 其余接口（上传、发起审查、读结果、审批写入、
-   `/api/v1/eval/summary`）仍是 `permitAll`，不加凭证直接 200。`X-Operator` 已改为取登录账号，
-   比手填强，但**审批写入端点 `POST /api/v1/reviews/{id}/approve` 没锁**——知道 URL 就能绕过管理端
-   直接提交。要真锁，得把它挪到 `/api/v1/admin/**` 下或单独加规则。见 README 已知限制第 5、11 条。
+2. **管理端有鉴权，用户端没有（属登记取舍，不是漏配）**：阶段 3 给 `/api/v1/admin/**` 上了
+   `SecurityFilterChain`（HTTP BASIC / ADMIN 角色 / 401·403 都是 JSON / STATELESS），
+   **前端登录卡只是体验，真正的门在后端**，`curl` 不带凭证会被 401 挡住。审批写入
+   `POST /api/v1/admin/reviews/{id}/approve` 与评测看板 `GET /api/v1/admin/eval/summary`
+   **已迁到 `/api/v1/admin/` 下受 ADMIN 保护**（ADR-0008）：绕过管理端页面直接 `curl` 不带 `-u`
+   会收到 401/403，操作人取认证主体而非 `X-Operator` 头。仍未锁的只有用户端只读/创建类接口
+   （上传、发起审查、读结果），属同一登记的取舍。见 README 已知限制第 4、12 条。
 3. **契约里可选字段仍为空**：`ContractSummary.last_review` 的 `mode` / `findings_count`
    在 Java 侧未填充（`Review` 实体没有 `mode` 列），列表页按 `—` 展示。补它需要在列表
    里逐行取事件（N+1），本阶段没做。

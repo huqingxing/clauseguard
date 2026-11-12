@@ -272,15 +272,15 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
 2. **评测 examiner 是确定性替身**：100% 召回证明的是链路无损耗，不是模型能力；换真模型只需换
    `build_eval_agent_factory` 里的模型。
 3. **条款定位 IoU 恒 1.0**：合成语料里一条款=一句，切分后 span 恰等于标注 span，区分度有限。
-4. **管理端已鉴权，用户端仍未鉴权**：`/api/v1/admin/**`（含待审批队列）需要 `ADMIN` 角色
-   （HTTP BASIC，账号在 `application.yml` 的 `clauseguard.security.users`，启动时 BCrypt
-   编码后进内存，**明文只用于本机演示，生产必须换**）。`/api/v1/**` 其余接口仍是 `permitAll`。
-   **审批写入端点也在其中**：`POST /api/v1/reviews/{id}/approve` 没锁，绕过管理端页面直接
-   POST 照样能批（`X-Operator` 现在是登录账号，比手填强，但仍是「客户端自称」，
-   不是服务端认定）。要真锁，得先给该路径加上 ADMIN 前缀规则。
-   对外上线前必须先接用户认证，否则审计留痕形同虚设。**注意评测接口也是其中之一**：
-   管理端登录卡把两屏都挡在后面，但 `/api/v1/eval/summary` 在网关侧仍放行，
-   绕过页面直接请求照样拿得到成本结构——前端登录只解决「谁在用界面」，不解决「谁能调接口」。
+4. **管理端已鉴权，用户端仍未鉴权（这是登记的取舍，不是漏配）**：`/api/v1/admin/**`
+   需要 `ADMIN` 角色（HTTP BASIC，账号在 `application.yml` 的 `clauseguard.security.users`，
+   启动时 BCrypt 编码后进内存，**明文只用于本机演示，生产必须换**）。审批写入
+   `POST /api/v1/admin/reviews/{id}/approve` 与评测看板 `GET /api/v1/admin/eval/summary`
+   都已迁到 `/api/v1/admin/` 下，受同一套 ADMIN 规则保护——**用户端无身份，审批只能经管理端**：
+   绕过管理端页面直接 `curl` 不带 `-u` 会收到 401/403，操作人取自认证主体（Basic 登录账号）
+   而不是客户端自称的 `X-Operator` 头。给整个用户端上鉴权是另一个阶段的产品决策
+   （需先做用户认证），不在本任务内。`/api/v1/**` 其余用户端接口（上传、发起审查、读结果）仍是
+   `permitAll`，属于同一登记的取舍。详见 [ADR-0008](docs/ADR-0008-admin-protected-write-paths.md)。
 5. **压测跑在 mock 后端**：数值反映编排层（下载/切分/6 专家 fan-out/critic/回写），
    不含真实供应商的模型时延与限流。
 6. **Python 侧 resume 是同一条 trace 的第二段根 span**（不是同一个 span 的延续），
@@ -317,10 +317,10 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
     另外「重连 N 次」这个口径只在事件流上成立——已完成的审查断线时页面读的是 REST 快照，
     不会因为连不上就抹掉已显示的结果。
 12. **用户端接口仍未鉴权，只有 `/api/v1/admin/**` 受保护**：`SecurityConfig` 里除管理端路径外
-    一律 `permitAll`，所以上传、发起审查、读结果、审批写入、以及 `/api/v1/eval/summary` 都不需要
-    任何凭证——用 `curl` 不带 `-u` 直接打就是 200。管理端那套 BASIC 只是把「运维/成本/审批」这一块
-    关起来，**不是**给整个 API 上的门。任何「用户端看着没有入口」的结论都不等于「接口调不到」，
-    细节与后果见第 4 条。
+    一律 `permitAll`，所以上传、发起审查、读结果都不需要任何凭证——用 `curl` 不带 `-u` 直接打就是 200。
+    管理端那套 BASIC 把「运维/成本/审批」这一块关起来，**不是**给整个 API 上的门。任何「用户端看着没有
+    入口」的结论都不等于「接口调不到」。审批写入与评测看板已迁到 `/api/v1/admin/` 下受 ADMIN 保护
+    （见第 4 条），不再是无凭证可达；仍漏在 `permitAll` 的只有用户端只读/创建类接口，属于登记的取舍。
 
 ## 测试与门禁
 

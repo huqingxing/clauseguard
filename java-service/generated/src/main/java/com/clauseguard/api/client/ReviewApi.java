@@ -114,7 +114,7 @@ public class ReviewApi extends BaseApi {
         String[] localVarAuthNames = new String[] {  };
 
         ParameterizedTypeReference<ApproveResponse> localReturnType = new ParameterizedTypeReference<ApproveResponse>() {};
-        return apiClient.invokeAPI("/api/v1/reviews/{id}/approve", HttpMethod.POST, uriVariables, localVarQueryParams, localVarPostBody, localVarHeaderParams, localVarCookieParams, localVarFormParams, localVarAccept, localVarContentType, localVarAuthNames, localReturnType);
+        return apiClient.invokeAPI("/api/v1/admin/reviews/{id}/approve", HttpMethod.POST, uriVariables, localVarQueryParams, localVarPostBody, localVarHeaderParams, localVarCookieParams, localVarFormParams, localVarAccept, localVarContentType, localVarAuthNames, localReturnType);
     }
     /**
      * 创建审查任务

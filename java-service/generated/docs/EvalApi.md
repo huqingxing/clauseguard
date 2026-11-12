@@ -4,7 +4,7 @@ All URIs are relative to *http://localhost:8080*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**getEvalSummary**](EvalApi.md#getEvalSummary) | **GET** /api/v1/eval/summary | 评测看板汇总（token/成本/质量/增量收益） |
+| [**getEvalSummary**](EvalApi.md#getEvalSummary) | **GET** /api/v1/admin/eval/summary | 评测看板汇总（token/成本/质量/增量收益） |
 
 
 

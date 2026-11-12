@@ -1,7 +1,5 @@
 package com.clauseguard.review;
 
-import com.clauseguard.api.model.ApproveRequest;
-import com.clauseguard.api.model.ApproveResponse;
 import com.clauseguard.api.model.FindingsPage;
 import com.clauseguard.api.model.ReviewCreateRequest;
 import com.clauseguard.api.model.ReviewCreateResponse;
@@ -18,10 +16,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 /**
  * 审查任务 REST 入口。浏览器只认 Java：创建由 Java 受理并异步编排，事件流经 Java 透传。
@@ -44,35 +38,6 @@ public class ReviewController {
             @RequestHeader(value = "traceparent", required = false) String traceparent) {
         ReviewCreateResponse response = reviewService.createReview(request, traceparent);
         return ResponseEntity.status(202).body(response);
-    }
-
-    @PostMapping("/{id}/approve")
-    public ResponseEntity<ApproveResponse> approve(
-            @PathVariable("id") String id,
-            @RequestHeader("X-Operator") String operator,
-            @RequestBody List<ApproveRequest> approvals) {
-        ApproveResponse response = reviewService.approveReview(id, approvals, decodeOperator(operator));
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * 解出操作人姓名。
-     *
-     * HTTP 头按 RFC 7230 只能承载 ISO-8859-1，浏览器遇到中文直接拒绝发请求
-     * （"String contains non ISO-8859-1 code point"），所以前端按 UTF-8 百分号编码后放头里，
-     * 这里还原。不含 '%' 的值原样返回：纯 ASCII 调用方（脚本/测试）不受影响。
-     * 放在 Controller 是因为这属于传输层编解码，不是业务规则。
-     */
-    static String decodeOperator(String raw) {
-        if (raw == null || !raw.contains("%")) {
-            return raw;
-        }
-        try {
-            return URLDecoder.decode(raw, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ex) {
-            // 非法百分号序列（如用户名字里真有 '%'）就当原文，不因编码猜测丢掉审批人。
-            return raw;
-        }
     }
 
     /**

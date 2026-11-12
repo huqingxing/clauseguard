@@ -39,8 +39,9 @@ const items = ref<PendingGroup[]>([])
 const submitting = ref(false)
 
 /**
- * 审批人 = 当前登录的管理员账号。不再让人手填姓名：手填的名字进审计表，
- * 等于谁都能以别人的名义签字。
+ * 审批人 = 当前登录的管理员账号（仅用于界面展示，不回传后端）。
+ * 真正的操作人由后端从认证主体写入审批记录，前端传姓名等于谁都能以别人名义签字，
+ * 审计表不可信——这是阶段 14 刻意去掉的环节。
  */
 const operator = getUsername()
 
@@ -143,7 +144,7 @@ async function submit() {
 
   submitting.value = true
   try {
-    await approveReview(props.id, approvals, operator.trim())
+    await approveReview(props.id, approvals)
     // 提交成功后主动关流：续跑事件会把这一页从「已提交」翻成「已完成」，
     // 审核者会以为自己的审批没落库。这一页的职责到「审批已记录」为止。
     phase.value = 'submitted'

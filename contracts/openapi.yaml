@@ -77,15 +77,17 @@ paths:
                 description: 每个事件行是 events.schema.json 定义的 JSON 对象。
         "404":
           $ref: "#/components/responses/NotFound"
-  /api/v1/reviews/{id}/approve:
+  /api/v1/admin/reviews/{id}/approve:
     post:
-      tags: [review]
-      summary: 高风险条款人工审批决定（数组）
+      tags: [review, admin]
+      summary: 高风险条款人工审批决定（数组）【需 ADMIN 角色】
       operationId: approveReview
       description: >-
+        审批写入入口，落在 /api/v1/admin 下，需要 ADMIN 角色（Basic 认证）。
         审批是图的一部分：本端点校验 contract_version/content_hash（与中断时基线比对，
         不一致返回 409 CONTRACT_CHANGED），落库每条审批记录（含操作人、时间、前后措辞），
         再转发到 Python resume 续跑。请求体为审批结果数组（每条对应一条待审高风险条款）。
+        操作人取自认证主体（Basic 登录账号），不再信任客户端自称的 X-Operator 头。
       parameters:
         - name: id
           in: path
@@ -93,12 +95,12 @@ paths:
           schema: { type: string, format: uuid }
         - name: X-Operator
           in: header
-          required: true
+          required: false
+          deprecated: true
           schema: { type: string }
           description: >-
-            审批操作人，写入 approval 表用于审计留痕。
-            非 ASCII 姓名须按 UTF-8 百分号编码（HTTP 头只能承载 ISO-8859-1，
-            浏览器对含中文的头会在发出前直接抛错），Java 侧解码后入库。
+            已废弃。操作人现以认证主体为准；本头若仍出现仅触发 WARN 且值被忽略，不写入审批记录。
+            历史客户端曾用它传审批人姓名（非 ASCII 须 URL 编码），现已不再读取。
       requestBody:
         required: true
         content:
@@ -320,14 +322,15 @@ paths:
                 $ref: "#/components/schemas/ContractDiff"
         "404":
           $ref: "#/components/responses/NotFound"
-  /api/v1/eval/summary:
+  /api/v1/admin/eval/summary:
     get:
-      tags: [eval]
-      summary: 评测看板汇总（token/成本/质量/增量收益）
+      tags: [eval, admin]
+      summary: 评测看板汇总（token/成本/质量/增量收益）【需 ADMIN 角色】
       operationId: getEvalSummary
       description: >-
         Stage 12：聚合 review_event 中 run.completed 的 usage/quality/incremental 字段，
-        不建新表（数据本来就在事件流里）。
+        不建新表（数据本来就在事件流里）。落在 /api/v1/admin 下，需要 ADMIN 角色
+        （Basic 认证）——评测看板暴露成本结构与用量，属内部运营数据，不对匿名开放。
       responses:
         "200":
           description: 汇总指标。

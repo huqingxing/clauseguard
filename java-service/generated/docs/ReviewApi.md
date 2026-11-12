@@ -4,7 +4,7 @@ All URIs are relative to *http://localhost:8080*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**approveReview**](ReviewApi.md#approveReview) | **POST** /api/v1/reviews/{id}/approve | 高风险条款人工审批决定（数组） |
+| [**approveReview**](ReviewApi.md#approveReview) | **POST** /api/v1/admin/reviews/{id}/approve | 高风险条款人工审批决定（数组） |
 | [**createReview**](ReviewApi.md#createReview) | **POST** /api/v1/reviews | 创建审查任务 |
 | [**getReview**](ReviewApi.md#getReview) | **GET** /api/v1/reviews/{id} | 查询审查结果 |
 | [**getReviewArtifact**](ReviewApi.md#getReviewArtifact) | **GET** /api/v1/reviews/{id}/artifact | 获取批注回写产物（带批注的 Word） |

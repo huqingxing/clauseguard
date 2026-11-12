@@ -72,7 +72,7 @@ public class EvalApi extends BaseApi {
         String[] localVarAuthNames = new String[] {  };
 
         ParameterizedTypeReference<EvalSummary> localReturnType = new ParameterizedTypeReference<EvalSummary>() {};
-        return apiClient.invokeAPI("/api/v1/eval/summary", HttpMethod.GET, Collections.<String, Object>emptyMap(), localVarQueryParams, localVarPostBody, localVarHeaderParams, localVarCookieParams, localVarFormParams, localVarAccept, localVarContentType, localVarAuthNames, localReturnType);
+        return apiClient.invokeAPI("/api/v1/admin/eval/summary", HttpMethod.GET, Collections.<String, Object>emptyMap(), localVarQueryParams, localVarPostBody, localVarHeaderParams, localVarCookieParams, localVarFormParams, localVarAccept, localVarContentType, localVarAuthNames, localReturnType);
     }
 
     @Override

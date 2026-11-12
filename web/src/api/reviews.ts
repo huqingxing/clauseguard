@@ -56,17 +56,18 @@ export function listFindings(reviewId: string, page = 0, size = 20): Promise<Fin
   return apiGet<FindingsPage>(`${BASE}/${reviewId}/findings?page=${page}&size=${size}`)
 }
 
-/** 审批是图的一部分：提交后 Java 落审批记录并转发 Python resume，续跑事件仍在同一条流上。 */
+/**
+ * 审批是图的一部分：提交后 Java 落审批记录并转发 Python resume，续跑事件仍在同一条流上。
+ *
+ * 审批写入入口已迁到 /api/v1/admin/reviews（需 ADMIN 角色），http.ts 的 ADMIN_PATH 会自动
+ * 附加 Basic 凭证。操作人不再由前端传：后端取认证主体（登录账号）写入审批记录，
+ * 避免「客户端自称谁就能以谁名义签字」的审计漏洞。
+ */
 export async function approveReview(
   reviewId: string,
   approvals: ApproveRequest[],
-  operator: string,
 ): Promise<ApproveResponse> {
-  // HTTP 头只能承载 ISO-8859-1：中文审批人姓名必须先编码，否则浏览器在 fetch 前就抛
-  // "String contains non ISO-8859-1 code point"，请求根本发不出去（Java 侧对应解码）。
-  return apiPost<ApproveResponse>(`${BASE}/${reviewId}/approve`, approvals, {
-    'X-Operator': encodeURIComponent(operator),
-  })
+  return apiPost<ApproveResponse>(`/api/v1/admin/reviews/${reviewId}/approve`, approvals)
 }
 
 /**
