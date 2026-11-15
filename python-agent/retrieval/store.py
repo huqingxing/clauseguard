@@ -78,6 +78,14 @@ class ChunkStore:
     """同步连接：FastAPI 端点声明为 def，由框架丢进线程池，避免 async 里跑阻塞 IO。"""
 
     def __init__(self, dsn: str, *, schema_dim: int = 1024, pool_size: int = 8) -> None:
+        # 空 DSN 直接在构造期报错，不留给第一条 SQL 去抛 psycopg 的模糊错误：
+        # 检索库连错/没配的表现是「检索 0 命中」，链路照样跑完，错误要等到人工核对结论才暴露。
+        if not dsn or not dsn.strip():
+            raise ValueError(
+                "CLAUSEGUARD_RETRIEVAL_PG_DSN 未配置：检索库连接串为空。"
+                "请在 .env 中设置，例如 postgresql://clauseguard:clauseguard@localhost:55432/"
+                "clauseguard_retrieval?connect_timeout=2"
+            )
         self.dsn = dsn
         self.schema_dim = schema_dim
         self._pool: LifoQueue[psycopg.Connection[dict[str, Any]]] = LifoQueue(maxsize=pool_size)

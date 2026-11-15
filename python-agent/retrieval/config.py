@@ -98,11 +98,14 @@ class RetrievalSettings(BaseSettings):
     )
 
     # 知识库连接串；允许 Python 直连 Postgres，但绝不指向业务库 MySQL。
-    # 默认串带 connect_timeout：库不可达时审查链路要能快速降级（ADR-0003），
-    # 而不是被 libpq 的默认 20~30s 连接超时拖住整轮 run。
-    pg_dsn: str = (
-        "postgresql://clauseguard:clauseguard@localhost:5432/clauseguard_agent?connect_timeout=2"
-    )
+    #
+    # 刻意不给默认值：检索库（clauseguard_retrieval）与业务库、checkpoint 库是三个不同的库，
+    # 若这里塞一个「看起来能用」的默认串，配置丢失时会静默连上一个空库 —— 检索返回 0 命中、
+    # 审查照常跑完，只是结论全错，比启动直接失败难查得多。空串由 ChunkStore 负责 fail-fast。
+    #
+    # 配置示例（connect_timeout 必须有：库不可达时审查链路要能快速降级，见 ADR-0003）：
+    #   postgresql://clauseguard:clauseguard@localhost:55432/clauseguard_retrieval?connect_timeout=2
+    pg_dsn: str = ""
     schema_dim: int = 1024
 
     embedding_backend: EmbeddingBackend = Field(
