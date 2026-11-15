@@ -11,7 +11,7 @@
 
 | 指标 | 实测 | 目标 | 结论 |
 | --- | --- | --- | --- |
-| 并行 vs 串行 P95 | serial 3329ms → parallel 963ms，下降 71.1% | ≥ 60% | ✅ |
+| 并行 vs 串行 P95 | serial 3246ms → parallel 1050ms，下降 67.6% | ≥ 60% | ✅ |
 | findings 无重复 | 20 条 / 20 个唯一键 | 集合相等 | ✅ |
 | 伪造/越界引用 | 0（全部 finding 有有效 citations） | 白名单强制 | ✅ |
 | 预算降级（max_tokens=1） | degraded=true，跳过低级 | 优雅降级 | ✅ |
@@ -19,19 +19,19 @@
 | 节点级埋点 | node.finished 成对，duration_ms/tokens 齐全 | 全覆盖 | ✅ |
 | token 记账 | in=15600 out=6240 cost=0.0250 元 | 经 merge_budget 累加 | ✅ |
 
-串行样本耗时（ms）：[3329, 3253, 3252, 3244, 3247]
-并行样本耗时（ms）：[910, 899, 874, 963, 952]
+串行样本耗时（ms）：[3245, 3244, 3246, 3240, 3243]
+并行样本耗时（ms）：[844, 951, 909, 862, 1050]
 
 ## 每专家节点埋点（并行样本）
 
 | 专家节点 | 分片数 | 节点耗时合计ms | token | findings |
 | --- | --- | --- | --- | --- |
 | review.commercial | 1 | 188 | 3360 | 4 |
-| review.compliance | 2 | 1702 | 4200 | 3 |
-| review.data | 2 | 1516 | 3780 | 4 |
-| review.ip | 2 | 1186 | 3780 | 3 |
-| review.liability | 1 | 422 | 3360 | 3 |
-| review.subject | 1 | 343 | 3360 | 3 |
+| review.compliance | 2 | 1593 | 4200 | 3 |
+| review.data | 2 | 1374 | 3780 | 4 |
+| review.ip | 2 | 1124 | 3780 | 3 |
+| review.liability | 1 | 406 | 3360 | 3 |
+| review.subject | 1 | 312 | 3360 | 3 |
 
 ## findings 分布
 
