@@ -58,6 +58,12 @@ make run-py MODEL_BACKEND=mock                  # 2. 编排层（无密钥也能
 cd java-service && mvn spring-boot:run          # 3. 业务网关（另开终端）
 ```
 
+检索库（pgvector）的连接默认不含密码：`python-agent/config/retrieval.yaml` 是提交进仓库的文件，
+密钥不能写进去。密码由 `.env` 里的 `CLAUSEGUARD_RETRIEVAL_PG_DSN`（或环境变量、`PGPASSWORD`）提供，
+优先级 环境变量 > `.env` > yaml；整串给出时以 `.env` 为准，形如
+`postgresql://clauseguard:<密码>@127.0.0.1:55432/clauseguard_retrieval?connect_timeout=2`。
+缺这一项不会静默降级——`ChunkStore` 构造期直接报错。
+
 **Windows 上没有 make** 也能跑，等价命令（已在本机逐条验证）：
 
 | 目标 | 等价命令 |
