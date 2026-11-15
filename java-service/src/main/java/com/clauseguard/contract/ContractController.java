@@ -8,9 +8,8 @@ import com.clauseguard.api.model.ContractSummaryLastReview;
 import com.clauseguard.api.model.ContractUploadResponse;
 import com.clauseguard.api.model.ListContracts200Response;
 import com.clauseguard.contract.domain.Contract;
-import com.clauseguard.review.ReviewRepository;
 import com.clauseguard.review.ReviewService;
-import com.clauseguard.review.domain.Review;
+import com.clauseguard.review.ReviewService.LatestReview;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -28,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -43,15 +43,10 @@ import java.util.UUID;
 public class ContractController {
 
     private final ContractService contractService;
-    private final ReviewRepository reviewRepository;
     private final ReviewService reviewService;
 
-    public ContractController(
-            ContractService contractService,
-            ReviewRepository reviewRepository,
-            ReviewService reviewService) {
+    public ContractController(ContractService contractService, ReviewService reviewService) {
         this.contractService = contractService;
-        this.reviewRepository = reviewRepository;
         this.reviewService = reviewService;
     }
 
@@ -80,8 +75,11 @@ public class ContractController {
         List<Contract> contracts = keyword == null || keyword.isBlank()
                 ? contractService.recent(limit)
                 : contractService.search(keyword, limit);
+        // 先一次问完这批合同的最新审查：逐行查就是 20 次往返（N+1），页越大越明显。
+        Map<String, LatestReview> latest = reviewService.latestReviews(
+                contracts.stream().map(Contract::getId).toList());
         List<ContractSummary> items = contracts.stream()
-                .map(this::toSummary)
+                .map(contract -> toSummary(contract, latest.get(contract.getId())))
                 .toList();
         return new ListContracts200Response().items(items);
     }
@@ -97,8 +95,8 @@ public class ContractController {
                 .sizeBytes((int) Math.min(contract.getSizeBytes(), Integer.MAX_VALUE))
                 .createdAt(contract.getCreatedAt().atOffset(ZoneOffset.UTC))
                 .contentUrl("/api/v1/contracts/" + contract.getId() + "/content");
-        reviewRepository.findFirstByContractIdOrderByCreatedAtDesc(id)
-                .ifPresent(review -> detail.setLastReview(toDetailLastReview(review)));
+        reviewService.latestReview(id)
+                .ifPresent(latest -> detail.setLastReview(toDetailLastReview(latest)));
         return ResponseEntity.ok(detail);
     }
 
@@ -138,24 +136,26 @@ public class ContractController {
         return reviewService.contractDiff(id, targetVersion);
     }
 
-    private ContractSummary toSummary(Contract contract) {
+    private ContractSummary toSummary(Contract contract, LatestReview latest) {
         ContractSummary summary = new ContractSummary()
                 .contractId(UUID.fromString(contract.getId()))
                 .filename(contract.getFilename())
                 .version(contract.getVersion())
                 .createdAt(contract.getCreatedAt().atOffset(ZoneOffset.UTC));
-        reviewRepository.findFirstByContractIdOrderByCreatedAtDesc(contract.getId())
-                .ifPresent(review -> summary.setLastReview(new ContractSummaryLastReview()
-                        .reviewId(UUID.fromString(review.getId()))
-                        .status(ContractSummaryLastReview.StatusEnum.fromValue(
-                                review.getStatus().name().toLowerCase(Locale.ROOT)))));
+        // 没有审查过就不输出 last_review：前端据此显示「未审查」，而不是一个空对象。
+        if (latest != null) {
+            summary.setLastReview(new ContractSummaryLastReview()
+                    .reviewId(UUID.fromString(latest.reviewId()))
+                    .status(ContractSummaryLastReview.StatusEnum.fromValue(
+                            latest.status().toLowerCase(Locale.ROOT))));
+        }
         return summary;
     }
 
-    private static ContractDetailLastReview toDetailLastReview(Review review) {
+    private static ContractDetailLastReview toDetailLastReview(LatestReview latest) {
         return new ContractDetailLastReview()
-                .reviewId(UUID.fromString(review.getId()))
+                .reviewId(UUID.fromString(latest.reviewId()))
                 .status(ContractDetailLastReview.StatusEnum.fromValue(
-                        review.getStatus().name().toLowerCase(Locale.ROOT)));
+                        latest.status().toLowerCase(Locale.ROOT)));
     }
 }

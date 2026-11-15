@@ -46,6 +46,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -744,6 +745,37 @@ public class ReviewService {
             logger.warn("artifact 路径无法解析，按无产物处理: {}", e.getMessage());
             return Optional.empty();
         }
+    }
+
+    /**
+     * 合同维度的「最近一次审查」轻量视图：列表与详情只要 id + 状态，不整行拉 review。
+     *
+     * <p>为什么单独开一个类型给 contract 模块用：合同列表/详情只需要状态做角标，
+     * 直接把 Review 实体（含 pending_payload 这类大字段）交给 Controller 既浪费又越界；
+     * 合同模块也不该反过来注入 ReviewRepository —— 跨模块只读一律走 Service。
+     */
+    public record LatestReview(String reviewId, String status) {}
+
+    /** 单个合同的最近一次审查；没有审查过返回空（列表/详情据此不输出 last_review 字段）。 */
+    public Optional<LatestReview> latestReview(String contractId) {
+        return reviewRepository.findFirstByContractIdOrderByCreatedAtDesc(contractId)
+                .map(r -> new LatestReview(r.getId(), r.getStatus().name()));
+    }
+
+    /**
+     * 批量版：合同列表一次问完，消掉「每行再查一次」的 N+1。
+     * 结果已按 createdAt 倒序，putIfAbsent 保证每个合同留下的是最新那条。
+     */
+    public Map<String, LatestReview> latestReviews(Collection<String> contractIds) {
+        if (contractIds == null || contractIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, LatestReview> result = new HashMap<>();
+        for (Review review : reviewRepository.findByContractIdInOrderByCreatedAtDesc(contractIds)) {
+            result.putIfAbsent(review.getContractId(),
+                    new LatestReview(review.getId(), review.getStatus().name()));
+        }
+        return result;
     }
 
     /**

@@ -2,7 +2,6 @@ package com.clauseguard.contract;
 
 import com.clauseguard.api.model.ContractDiff;
 import com.clauseguard.contract.domain.Contract;
-import com.clauseguard.review.ReviewRepository;
 import com.clauseguard.review.ReviewService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,9 +42,6 @@ class ContractControllerTest {
 
     @MockBean
     private ContractService contractService;
-
-    @MockBean
-    private ReviewRepository reviewRepository;
 
     @MockBean
     private ReviewService reviewService;

@@ -18,6 +18,16 @@ public interface ReviewRepository extends JpaRepository<Review, String> {
 
     Optional<Review> findFirstByContractIdOrderByCreatedAtDesc(String contractId);
 
+    /**
+     * 合同列表的批量版：一次取回这批合同的全部审查，调用方按 createdAt 降序取每个合同的首条。
+     *
+     * <p>为什么不在 SQL 里做「每组取一条」：那要窗口函数或相关子查询，H2(MySQL 模式) 与 MySQL 8
+     * 的写法不完全通用；这里退一步用一条 IN 查询把行拉回来，在内存里 putIfAbsent 去重 ——
+     * 解决的是「20 条合同 ⇒ 20 次查询」的 N+1，至于一个合同历史上有多少条审查，
+     * 数量级是人工点出来的几十条，不构成内存压力。
+     */
+    List<Review> findByContractIdInOrderByCreatedAtDesc(Collection<String> contractIds);
+
     Optional<Review> findFirstByContractIdAndVersionOrderByCreatedAtDesc(String contractId, int version);
 
     /**
