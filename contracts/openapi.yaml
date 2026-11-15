@@ -179,14 +179,20 @@ paths:
       summary: 获取批注回写产物（带批注的 Word）
       operationId: getReviewArtifact
       description: >-
-        Stage 12：前端只认 Java——本端点从 run.completed 事件的 artifact 字段解析预签名
-        URL 并 302 跳转，浏览器不直连 MinIO。未回写（占位/未完成）时返回 404。
+        Stage 12：前端只认 Java——本端点从 run.completed 事件的 artifact 字段解析下载地址。
+        存储后端决定交付方式：http(s) 预签名（MinIO）→ 302 跳转，浏览器直连对象存储；本地目录
+        后端返回的是 file URI，浏览器禁止 302 跳 file://（ERR_UNSAFE_REDIRECT），此时由 Java 直接
+        回附件字节（200，见下方 response）。未回写（占位/未完成）时返回 404。
       parameters:
         - name: id
           in: path
           required: true
           schema: { type: string, format: uuid }
       responses:
+        "200":
+          description: >-
+            附件字节流（仅本地目录存储后端）。Content-Type 为 docx，
+            Content-Disposition 为 attachment，浏览器直接保存。
         "302":
           description: 重定向到带签名的下载 URL（限时有效）。
         "404":

@@ -180,7 +180,8 @@ class ReviewStreamReplayIntegrationTest {
             return new ReviewService(
                     reviewRepository, reviewEventRepository, approvalRepository,
                     replayStore, agentClient, circuitBreakerRegistry, mapper, contractRepository,
-                    traceSupport, new ReviewEventWriter(reviewRepository, reviewEventRepository));
+                    traceSupport, new ReviewEventWriter(reviewRepository, reviewEventRepository),
+                    "target/test-artifacts");
         }
     }
 }

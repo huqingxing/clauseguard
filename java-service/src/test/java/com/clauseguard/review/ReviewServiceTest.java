@@ -24,6 +24,7 @@ import io.micrometer.tracing.Tracer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -31,6 +32,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -80,6 +84,10 @@ class ReviewServiceTest {
 
     private ReviewService service;
 
+    /** 产物白名单根目录：file: 分支只允许读这棵子树，故每条用例给一个干净的临时目录。 */
+    @TempDir
+    Path artifactRoot;
+
     @SuppressWarnings("unchecked")
     private static ObjectProvider<Tracer> noTracer() {
         ObjectProvider<Tracer> provider = org.mockito.Mockito.mock(ObjectProvider.class);
@@ -99,7 +107,8 @@ class ReviewServiceTest {
                 reviewRepository, reviewEventRepository, approvalRepository,
                 replayStore, agentClient, registry, mapper, contractRepository,
                 new TraceContextSupport(noTracer()),
-                new ReviewEventWriter(reviewRepository, reviewEventRepository));
+                new ReviewEventWriter(reviewRepository, reviewEventRepository),
+                artifactRoot.toString());
         // 仅 createReview 路径需要 save；其余测试不触发，故标为 lenient 避免严格模式报错。
         lenient().when(reviewRepository.save(any(Review.class))).thenAnswer(i -> i.getArgument(0));
     }
@@ -420,17 +429,44 @@ class ReviewServiceTest {
     }
 
     @Test
-    void artifactDownloadUrlReadsRunCompletedArtifact() {
+    void artifactDownloadKeepsRedirectForPresignedUrl() {
         givenReviewWithCompleted("00000000-0000-0000-0000-0000000000c4", 1);
-        assertThat(service.artifactDownloadUrl("00000000-0000-0000-0000-0000000000c4"))
-                .contains("http://minio.local/clauseguard/artifacts/annotated.docx?sig=abc");
+        ReviewService.ArtifactDownload download =
+                service.artifactDownload("00000000-0000-0000-0000-0000000000c4").orElseThrow();
+        assertThat(download.location())
+                .isEqualTo("http://minio.local/clauseguard/artifacts/annotated.docx?sig=abc");
+        assertThat(download.body()).isNull();
     }
 
     @Test
-    void artifactDownloadUrlEmptyWhenNotRendered() {
+    void artifactDownloadStreamsLocalFileInsideRoot() throws Exception {
+        Path artifact = artifactRoot.resolve("artifacts/cid/v1/annotated.docx");
+        Files.createDirectories(artifact.getParent());
+        Files.write(artifact, new byte[] {'P', 'K', 3, 4});
+        givenArtifactEvent("00000000-0000-0000-0000-0000000000c7", artifact.toUri().toString());
+
+        ReviewService.ArtifactDownload download =
+                service.artifactDownload("00000000-0000-0000-0000-0000000000c7").orElseThrow();
+        assertThat(download.location()).isNull();
+        assertThat(download.filename()).isEqualTo("annotated.docx");
+        assertThat(download.contentType()).contains("wordprocessingml.document");
+        assertThat(download.body().getInputStream().readAllBytes()).containsExactly('P', 'K', 3, 4);
+    }
+
+    @Test
+    void artifactDownloadRejectsLocalFileOutsideRoot() throws Exception {
+        Path outside = Files.createTempFile("outside-artifact", ".docx");
+        Files.write(outside, "secret".getBytes(StandardCharsets.UTF_8));
+        givenArtifactEvent("00000000-0000-0000-0000-0000000000c8", outside.toUri().toString());
+
+        assertThat(service.artifactDownload("00000000-0000-0000-0000-0000000000c8")).isEmpty();
+    }
+
+    @Test
+    void artifactDownloadEmptyWhenNotRendered() {
         when(reviewEventRepository.findByReviewIdAndTypeOrderBySeqAsc("00000000-0000-0000-0000-0000000000c5", "run.completed"))
                 .thenReturn(List.of());
-        assertThat(service.artifactDownloadUrl("00000000-0000-0000-0000-0000000000c5")).isEmpty();
+        assertThat(service.artifactDownload("00000000-0000-0000-0000-0000000000c5")).isEmpty();
     }
 
     @Test
@@ -509,6 +545,15 @@ class ReviewServiceTest {
                         + "\"artifact\":{\"object_key\":\"artifacts/x/annotated.docx\","
                         + "\"download_url\":\"http://minio.local/clauseguard/artifacts/annotated.docx?sig=abc\","
                         + "\"comments_count\":2,\"size_bytes\":48213}}")));
+    }
+
+    private void givenArtifactEvent(String reviewId, String downloadUrl) {
+        when(reviewEventRepository.findByReviewIdAndTypeOrderBySeqAsc(reviewId, "run.completed"))
+                .thenReturn(List.of(completedEvent(reviewId,
+                        "{\"seq\":30,\"type\":\"run.completed\",\"artifact\":{"
+                                + "\"object_key\":\"artifacts/x/annotated.docx\","
+                                + "\"download_url\":\"" + downloadUrl + "\","
+                                + "\"comments_count\":1,\"size_bytes\":4}}")));
     }
 
     private static ReviewEvent completedEvent(String reviewId, String payload) {

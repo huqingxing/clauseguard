@@ -30,10 +30,15 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -71,6 +76,8 @@ public class ReviewService {
     private static final Set<String> STATE_CRITICAL_TYPES = Set.of(TYPE_RUN_STARTED, TYPE_INTERRUPT);
     /** 空状态变更：绝大多数节点、消息、工具事件不碰 review 行。 */
     private static final Consumer<Review> NO_STATE_CHANGE = review -> { };
+    private static final String DOCX_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
     private final ReviewRepository reviewRepository;
     private final ReviewEventRepository eventRepository;
@@ -88,6 +95,12 @@ public class ReviewService {
      */
     private final ReviewEventWriter eventWriter;
 
+    /**
+     * 产物读取的白名单根目录：只有落在这棵子树下的本地文件才允许经 file: 分支回传。
+     * 没有这道校验，任何能改写事件 payload 的一方都能借该端点读走任意本地文件。
+     */
+    private final Path artifactRoot;
+
     private final Map<String, Set<LiveSubscription>> liveEmitters = new ConcurrentHashMap<>();
     private final Map<String, Boolean> subscribing = new ConcurrentHashMap<>();
 
@@ -101,7 +114,9 @@ public class ReviewService {
             ObjectMapper mapper,
             ContractRepository contractRepository,
             TraceContextSupport traceSupport,
-            ReviewEventWriter eventWriter) {
+            ReviewEventWriter eventWriter,
+            @Value("${clauseguard.artifact.local-root:${clauseguard.contract.upload-dir:./uploads}}")
+            String artifactLocalRoot) {
         this.reviewRepository = reviewRepository;
         this.eventRepository = eventRepository;
         this.approvalRepository = approvalRepository;
@@ -112,6 +127,7 @@ public class ReviewService {
         this.contractRepository = contractRepository;
         this.traceSupport = traceSupport;
         this.eventWriter = eventWriter;
+        this.artifactRoot = Path.of(artifactLocalRoot).toAbsolutePath().normalize();
     }
 
     /**
@@ -689,14 +705,45 @@ public class ReviewService {
     }
 
     /**
-     * 批注产物下载 URL：从 run.completed 的 artifact 字段解析预签名 URL。
-     * 前端只认 Java（Controller 302 跳转到该 URL），不直连 MinIO。
+     * 批注产物下载：两种存储后端对应两种交付方式，出口都收在 Java。
+     *
+     * <p>http(s)（MinIO 预签名）→ 交回 Controller 做 302，浏览器跳转后直连对象存储；
+     * file:（本地存储后端，未启 MinIO）→ 由 Java 读出字节流回传。后者不是「本地方便」的临时分支：
+     * 浏览器禁止 302 跳到 {@code file://}（ERR_UNSAFE_REDIRECT），把本地绝对路径交给浏览器在任何
+     * 部署下都不成立，因此只能由 Java 代理。
      */
-    public Optional<String> artifactDownloadUrl(String reviewId) {
+    public Optional<ArtifactDownload> artifactDownload(String reviewId) {
         return latestCompletedPayload(reviewId)
                 .map(payload -> payload.path("artifact"))
-                .filter(node -> node.isObject() && node.has("download_url"))
-                .map(node -> node.path("download_url").asText());
+                .filter(node -> node.isObject() && node.hasNonNull("download_url"))
+                .flatMap(node -> toArtifactDownload(node.path("download_url").asText()));
+    }
+
+    /** 下载意图：location 非空表示 302 跳转，body 非空表示直接回字节，二者恰有其一。 */
+    public record ArtifactDownload(String location, Resource body, String filename, String contentType) {
+    }
+
+    private Optional<ArtifactDownload> toArtifactDownload(String url) {
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            return Optional.of(new ArtifactDownload(url, null, null, null));
+        }
+        if (!url.startsWith("file:")) {
+            // 既不是可跳转的 http(s)、也不是本机文件：不猜协议，按「没有产物」处理（404）。
+            return Optional.empty();
+        }
+        try {
+            Path path = Path.of(URI.create(url)).toAbsolutePath().normalize();
+            // 白名单校验是安全边界，不能省；越界一律当作无产物，不回 403——不泄露路径是否存在。
+            if (!path.startsWith(artifactRoot) || !Files.isRegularFile(path)) {
+                return Optional.empty();
+            }
+            return Optional.of(new ArtifactDownload(
+                    null, new FileSystemResource(path), path.getFileName().toString(), DOCX_CONTENT_TYPE));
+        } catch (RuntimeException e) {
+            // 跨机器路径（Linux 的 file:///home/... 落到 Windows JVM）解析即失败：同样按无产物处理。
+            logger.warn("artifact 路径无法解析，按无产物处理: {}", e.getMessage());
+            return Optional.empty();
+        }
     }
 
     /**

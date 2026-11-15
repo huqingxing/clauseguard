@@ -7,11 +7,14 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,6 +24,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -95,6 +100,45 @@ class ReviewControllerTest {
                 .andExpect(status().isOk());
 
         verify(reviewService).stream("00000000-0000-0000-0000-0000000000e2", 3L);
+    }
+
+    // ---- 产物下载：http(s) 走跳转、file: 由 Java 代理字节 ----
+
+    @Test
+    void artifactRedirectsToPresignedUrl() throws Exception {
+        when(reviewService.artifactDownload("00000000-0000-0000-0000-0000000000f1"))
+                .thenReturn(Optional.of(new ReviewService.ArtifactDownload(
+                        "https://minio.local/a.docx?sig=abc", null, null, null)));
+
+        mockMvc.perform(get("/api/v1/reviews/00000000-0000-0000-0000-0000000000f1/artifact"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "https://minio.local/a.docx?sig=abc"));
+    }
+
+    @Test
+    void artifactStreamsLocalFileAsAttachment() throws Exception {
+        when(reviewService.artifactDownload("00000000-0000-0000-0000-0000000000f2"))
+                .thenReturn(Optional.of(new ReviewService.ArtifactDownload(
+                        null, new ByteArrayResource("PK".getBytes(StandardCharsets.UTF_8)),
+                        "annotated.docx",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document")));
+
+        mockMvc.perform(get("/api/v1/reviews/00000000-0000-0000-0000-0000000000f2/artifact"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename*=UTF-8''annotated.docx"))
+                .andExpect(content().bytes("PK".getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void artifactReturns404WhenNoArtifact() throws Exception {
+        when(reviewService.artifactDownload("00000000-0000-0000-0000-0000000000f3"))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/v1/reviews/00000000-0000-0000-0000-0000000000f3/artifact"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

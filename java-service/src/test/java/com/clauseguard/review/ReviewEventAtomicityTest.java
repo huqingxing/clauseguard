@@ -88,7 +88,7 @@ class ReviewEventAtomicityTest {
         return new ReviewService(
                 reviewRepository, eventRepository, approvalRepository, store,
                 agentClient, registry, mapper, contractRepository,
-                new TraceContextSupport(noTracer()), eventWriter);
+                new TraceContextSupport(noTracer()), eventWriter, "target/test-artifacts");
     }
 
     private static AgentEvent completed(long seq) {
