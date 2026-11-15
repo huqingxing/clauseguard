@@ -1,7 +1,7 @@
 # RAG 检索实验台 · 总验收报告
 
 > 验收方立场：**怀疑，不是确认**。每条结论均有「命令 + 实际输出 + 判据」。
-> 验收基线：`wip/rag-lab-acceptance` @ `34a3c3e`（由 `fix@dc71a87` 切出，含 39 项改动）。
+> 验收基线：`wip/rag-lab-acceptance` @ `a8b2863`（由 `fix@9c5a15b` 切出，含 39 项改动）。
 > 全程未改业务代码；只跑、只读、只记录、只写本报告与建基线 commit。
 
 ---
@@ -11,19 +11,19 @@
 | # | 项 | 命令（关键） | 实际输出（关键行） | 结论 |
 | --- | --- | --- | --- | --- |
 | 0 | 固化现状 | `git status --short \| wc -l` | 39 | PASS |
-| 0 | 建分支并提交基线 | `git checkout -b wip/rag-lab-acceptance` + `git add -A` + `git commit` | `34a3c3e`；`git status` 干净(0) | PASS |
+| 0 | 建分支并提交基线 | `git checkout -b wip/rag-lab-acceptance` + `git add -A` + `git commit` | `a8b2863`；`git status` 干净(0) | PASS |
 | 1 | 结构与文档完整性 | `ls` / `wc -l` 19 个必需文件 | 19/19 存在且非空；`queries.jsonl`=80 行；6 场景各 ≥10 | PASS |
 | 2 | 可复现性 | `python -m lab.run --strategies S5_context --embeddings E1 --rerank off --label accept-a/b` | a/b 均 `recall@5=0.5896 mrr@10=0.4440 ndcg@10=0.4764`；逐位相同，仅计时字段差异 | PASS |
 | 3 | 指标真实性 | `lab/out/report.md` → `lab/out/v1/metrics.json` → 复跑最优组 | 报告声称 15 组 / 第15组 `S5_context\|E3` recall@5=0.6146；v1 原始 metrics 逐位存在；复跑=0.6146（Δ=0） | PASS |
 | 4A | rerank 是否完成 | `find . -iname '*rerank*'`；`run_rerank.py --help`；查 `rerank.json` | 全仓库**无 `rerank.json`**；v1 报告**无 rerank 节**；仅 `switch_check` 有 rerank=on（deterministic 通断测试，tokens=0） | **FAIL** |
 | 4B | E3 是否替身 | `sed -n '45,49p;124,149p' lab/providers.py` | `E3=((2,),"cg-e3-char2-lowdim")` 字符 2-gram + `zlib.crc32` 哈希；第15组（最优）正用 E3 | 记录（事实） |
-| 4C | 未提交 | 见第 0 步 | 已提交至 `34a3c3e` | PASS |
+| 4C | 未提交 | 见第 0 步 | 已提交至 `a8b2863` | PASS |
 | 5 | 端到端真用 | 直连 `RetrievalService`（等价 `/v1/retrieval/search`）+ SQL 溯源 + 读 Java 降级契约 | 引用 100/100 真实法条、0 sim-00x；3/3 article 溯源命中；P50=4.76ms P95=6.36ms；降级契约由单测覆盖 | 部分验证（见 5 局限） |
 | 6.1 | Python 回归 | `uv run pytest -q` | **353 passed, 0 failed** | PASS |
 | 6.2 | Java 回归 | `mvn clean test`（JDK 21+） | 默认 JDK17→类版本错配红；JDK25→**103 passed, 0 fail, 2 skipped** | PASS（需 JDK21+） |
 | 6.3 | Web 回归 | `npm run test:unit` | **36 passed, 0 fail** | PASS |
-| 6.4 | 契约未改 | `git diff dc71a87 HEAD -- contracts/` | 差异 0 行 | PASS |
-| 6.5 | 前端未改 | `git diff dc71a87 HEAD --stat -- web/` | 差异 0 行 | PASS |
+| 6.4 | 契约未改 | `git diff 9c5a15b HEAD -- contracts/` | 差异 0 行 | PASS |
+| 6.5 | 前端未改 | `git diff 9c5a15b HEAD --stat -- web/` | 差异 0 行 | PASS |
 | 7 | 简历可写性 | 见第 7 节 | 见「简历最多一句话」 | — |
 | 8 | 收口 | 本报告 + 清理副产物 + `docs` 提交 | 见第 8 节 | — |
 
@@ -32,9 +32,9 @@
 ## 1. 第 0 步：固化现状（PASS）
 
 - `git status --short | wc -l` → **39**（16 modified + 23 untracked）。
-- 从 `fix@dc71a87` 切出 `wip/rag-lab-acceptance`，`git add -A`（`.gitignore` 已忽略 `.env`/`_pg_tmp/`/缓存/`eval/out/*`，无污染）+ 提交 → **`34a3c3e`**。
+- 从 `fix@9c5a15b` 切出 `wip/rag-lab-acceptance`，`git add -A`（`.gitignore` 已忽略 `.env`/`_pg_tmp/`/缓存/`eval/out/*`，无污染）+ 提交 → **`a8b2863`**。
 - 提交后 `git status` 干净（0）。验收期间可回滚。
-- 未推送、未 amend `dc71a87`、未 force push。
+- 未推送、未 amend `9c5a15b`、未 force push。
 
 ## 2. 第 1 步：结构与文档完整性（PASS）
 
@@ -97,7 +97,7 @@ lab/providers.py:143  h = zlib.crc32(cleaned[i:i+n].encode("utf-8"), self._seed)
 
 ### C. 未提交 —— 已在第 0 步处理（PASS）
 
-39 项改动已提交至 `wip/rag-lab-acceptance@34a3c3e`，验收期间可回滚；未推送、未 amend `dc71a87`、未 force push。
+39 项改动已提交至 `wip/rag-lab-acceptance@a8b2863`，验收期间可回滚；未推送、未 amend `9c5a15b`、未 force push。
 
 ### 额外发现（文档与数据不一致，按铁律#3 记录事实）
 
@@ -126,8 +126,8 @@ lab/providers.py:143  h = zlib.crc32(cleaned[i:i+n].encode("utf-8"), self._seed)
 - Python：`uv run pytest -q` → **353 passed, 0 failed**（≥ 改动前，无倒退）。
 - Java：`mvn test` 默认 JDK17 → **类版本错配红**（`AdminControllerTest` 由 JDK21 编译，class version 65.0，JDK17 只认到 61.0，`Tests run:0`）。项目 `pom.xml` 要求 `<java.version>21</java.version>`；本机无 JDK21 但有 **jdk-25**（≥21）。切换 `JAVA_HOME=jdk-25` 后 `mvn clean test` → **BUILD SUCCESS，103 passed, 0 fail, 2 skipped**（那 2 个 skipped 正是门控的真机联调测试，与第 5 步局限一致）。→ **红是环境/JDK 不匹配，非代码回归**。
 - Web：`npm run test:unit` → **36 passed, 0 fail**。
-- 契约：`git diff dc71a87 HEAD -- contracts/` → **0 行**（契约未改）。
-- 前端：`git diff dc71a87 HEAD --stat -- web/` → **0 行**（前端未改）。
+- 契约：`git diff 9c5a15b HEAD -- contracts/` → **0 行**（契约未改）。
+- 前端：`git diff 9c5a15b HEAD --stat -- web/` → **0 行**（前端未改）。
 
 ## 8. 第 7 步：结论可写性（简历用）
 
@@ -153,9 +153,9 @@ lab/providers.py:143  h = zlib.crc32(cleaned[i:i+n].encode("utf-8"), self._seed)
 
 ### 本次提交
 
-- 第 0 步已建基线 commit `34a3c3e`（含 39 项全部改动）。
-- 本报告 `docs/retrieval-acceptance.md` 作为 `docs:` 提交（不 amend `dc71a87`、不 force push）。
-- 关于「提交拆分为 feat(retrieval)/feat(java)/docs」：与第 0 步「一次性固化全部改动为基线」指令互斥（拆分需重写基线，等于 amend/交互式 rebase）。**已在第 0 步按显式指令提交为单基线**；建议在合并前由实现方用交互式 rebase 将 `34a3c3e` 拆为 3 个逻辑 commit（不 amend `dc71a87`、不 force push）。
+- 第 0 步已建基线 commit `a8b2863`（含 39 项全部改动）。
+- 本报告 `docs/retrieval-acceptance.md` 作为 `docs:` 提交（不 amend `9c5a15b`、不 force push）。
+- 关于「提交拆分为 feat(retrieval)/feat(java)/docs」：与第 0 步「一次性固化全部改动为基线」指令互斥（拆分需重写基线，等于 amend/交互式 rebase）。**已在第 0 步按显式指令提交为单基线**；建议在合并前由实现方用交互式 rebase 将 `a8b2863` 拆为 3 个逻辑 commit（不 amend `9c5a15b`、不 force push）。
 
 ### FAIL 项与根因
 
@@ -180,10 +180,10 @@ lab/providers.py:143  h = zlib.crc32(cleaned[i:i+n].encode("utf-8"), self._seed)
 - **rerank → 已实现、未接入生产，本轮不作为结论**：已据 4A FAIL 事实将 `python-agent/config/retrieval.yaml` 的 rerank 段与 `docs/rag-lab.md` §4 如实化——
   明确三点：①状态=已实现未接入生产（`lab/rerank.py` 保留为实验代码，不删除）；②原因=当前召回链路架构缺陷（风险召回 96.6%→29.1%），候选池可能缺 gold 致 rerank 评测无法归因（假阴性）；③结论=待召回链路（风险覆盖与引用证据解耦）修好后重做 on/off 对比，本轮不作为结论。并修正 §4 第 99 行 E1/E3 数字错挂（0.6146 属 E3 替身，E1 实为 0.5896），删除「无显著收益」未举证表述；§7 结论第 4 条同步更正。**简历不写 rerank。**
   本次改动**仅触及配置注释与文档**，未触碰业务代码、未改 `use_rerank` 的取值（仍为 `false`）、未改契约与前端。
-- 提交于 `wip/rag-lab-acceptance`（不 amend `dc71a87`、不 force push）。
+- 提交于 `wip/rag-lab-acceptance`（不 amend `9c5a15b`、不 force push）。
 
 ### 三个已知问题的结论（原文）
 
 - **A**：阶段 5 的 rerank 未接入生产（`lab/rerank.py` 已实现，但生产 RetrievalService 未接线），retrieval.yaml 的 `use_rerank=false` 是基于「未接入」而非「实验结论」。
 - **B**：矩阵最优结论（S5_context|E3，recall@5=0.6146）建立在离线确定性哈希投影替身上，不能用于模型选型。
-- **C**：已在第 0 步处理——39 项改动提交至 `wip/rag-lab-acceptance@34a3c3e`，验收期间可回滚；未推送、未 amend `dc71a87`、未 force push。
+- **C**：已在第 0 步处理——39 项改动提交至 `wip/rag-lab-acceptance@a8b2863`，验收期间可回滚；未推送、未 amend `9c5a15b`、未 force push。

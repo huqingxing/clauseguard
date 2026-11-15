@@ -1,7 +1,7 @@
 # clauseguard 构建 / 实现过程中遇到的 Bug 与报错汇总
 
 > 用途：复盘、面试讲解「改哪里 / 为什么 / 怎么修」。
-> 范围：阶段 13（last_event_at）、阶段 14（看门狗回收）、阶段 15（.env 半失效），以及本地跑通时的运维坑。
+> 范围：阶段 13（last_event_at）、阶段 14（看门狗回收）、阶段 15（.env 半失效）、本地跑通时的运维坑，以及 2026-11-15 的四项加固（索引/N+1、DSN fail-fast、异常兜底、跨层调用）。
 > 结论先行：**绝大多数 bug 出现在「真实环境 vs mock 单测」的落差处**——单测覆盖不到 JPA/Hibernate 绑定、事务边界、进程环境变量、前端代理、系统代理等问题。
 
 ---
@@ -19,6 +19,10 @@
 | 7 | 15 | 端到端 live/mock 实跑无法在本机沙箱完成 | `docker compose up -d` 拉镜像返回 HTML 错误页 | 交用户本机执行（非代码 bug） |
 | 8 | 运维 | 本机 curl 返 502（假死相） | 走系统代理连本地服务 | `--noproxy '*'` / `NO_PROXY` |
 | 9 | 运维 | 连真实 LLM 报 401 | 默认 `base_url=openai.com`、缺 `base_url/model` 覆盖 | 显式设 DashScope/DeepSeek 端点 |
+| 10 | 加固 | 合同列表 20 条 = 20 次审查查询；按 contract_id 全表扫 | `review` 只有主键，无 `(contract_id, created_at)`；`toSummary` 逐行查 | `V6` 补两索引 + 最近审查收进 `ReviewService` 批量取 |
+| 11 | 加固 | 检索静默 0 命中，链路照常跑完 | `pg_dsn` 默认串指向 `5432/clauseguard_agent`（另一个库），配置丢失时连空库不报错 | 删默认值，`ChunkStore` 构造期 fail-fast |
+| 12 | 加固 | 未预期异常的 500 可能带堆栈、表名、绝对路径 | 只映射了 6 个业务异常，其余走 Spring 默认处理 | 兜底 handler：`ErrorResponse` 原样放行，其余固定文案 |
+| 13 | 加固 | `ContractController` 直接注入 `ReviewRepository` | 跨模块越过 Service 层直接读别人的仓储 | 下沉为 `ReviewService.latestReview/latestReviews` |
 
 ---
 
@@ -81,6 +85,34 @@
 - **根因**：驱动模型调用的是 `AgentSettings`，默认 `llm_base_url=https://api.openai.com/v1`、`llm_model=gpt-4o-mini`；只设 key 不覆盖 base_url/model，请求打到 OpenAI 用别家 key 必 401。且 `CLAUSEGUARD_AGENT_LLM_PROVIDER` 变量**根本不存在**（曾误说）。
 - **修复**：连 DashScope 设 `CLAUSEGUARD_AGENT_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1` + `LLM_MODEL=qwen-plus`；连 DeepSeek 设 `base_url=https://api.deepseek.com/v1` + `model=deepseek-chat`。外网走代理、本地用 `NO_PROXY` 直连。
 
+### 🐞 10. 加固 — 合同列表的 N+1 与缺失索引
+- **现象**：`GET /api/v1/contracts?limit=20` 会发 20 条 `select ... where contract_id=? order by created_at desc limit 1`；`review` 表除主键外没有任何索引，按 `contract_id` 过滤就是全表扫。
+- **根因**：阶段 12 加合同列表时给 `contract` 建了 `idx_contract_created`，但「取最近一次审查」落在 `review` 上，那条路没建索引；同时 `ContractController.toSummary` 是逐行调仓储，典型的 N+1。
+- **修复**：
+  - `V6__review_lookup_index.sql` 补 `review(contract_id, created_at)` 与 `review_event(review_id, ts)`（后者让阶段 13/14 的 `MAX(ts)` 不再回表）。只加索引、不改列；不写 `IF NOT EXISTS`（MySQL 8 不支持，而同一份迁移要在 H2 上跑）。
+  - `ReviewService.latestReviews(ids)`：一条 `IN` 查全部，内存里 `putIfAbsent` 取每合同首条；`ContractService`/`ContractController` 不再各自查一次。
+- **验证**：`mvn test` 132 通过（Flyway 在 H2 上执行过 V6）；响应字段与取值不变。
+
+### 🐞 11. 加固 — 检索库 DSN 的错误默认值（静默 0 命中）
+- **现象**：没有异常、没有告警，检索返回 0 命中，审查照常跑完，只是结论全错。
+- **根因**：`retrieval/config.py` 的 `pg_dsn` 默认串是 `localhost:5432/clauseguard_agent`——那是 LangGraph checkpoint 库；真实检索库是 `55432/clauseguard_retrieval`。pydantic 的优先级是 环境变量 > `.env` > yaml > 代码默认，只要 yaml 缺失或换机器没配，就会静默连上另一个库。
+- **修复**：默认值改空串，`ChunkStore.__init__` 在构造期抛 `ValueError` 并带配置示例——**宁可在启动时炸，也不要跑出一份看起来正常的错误报告**。
+- **配套**：密码不进 `python-agent/config/retrieval.yaml`（该文件提交进仓库），改由 `.env` 的 `CLAUSEGUARD_RETRIEVAL_PG_DSN` 提供（`.env` 已 gitignore），README 快速开始与 `.env.example` 同步说明。
+- **验证**：免 `PGPASSWORD` 连库 `law_chunk = 13191`；`ChunkStore('')` 直接抛错。
+
+### 🐞 12. 加固 — 未映射异常把内部信息带进响应体
+- **现象**：任何没被映射的异常（空指针、SQL 异常）走 Spring 默认处理，500 响应可能带出堆栈、表名、本机绝对路径。
+- **根因**：`GlobalExceptionHandler` 只映射了 6 个业务异常，没有兜底。
+- **修复**：加 `@ExceptionHandler(Exception.class)`，**先判断 `ex instanceof ErrorResponse` 并原样放行**（Spring 的 404/405/415 都是 ErrorResponse，状态码本身安全），其余记 `log.error` 带堆栈、对外只回固定文案「服务内部错误，请稍后重试」。
+- **关键点**：不判 `ErrorResponse` 直接吞 `Exception`，未知路径会从 404 变成 500——「路径写错」被误报成「服务挂了」，比泄露堆栈更误导人。
+- **验证**：临时 `@WebMvcTest` 三用例——未知路径 404、`POST` 打 `GET` 端点 405、抛 `IllegalStateException("/srv/secret")` → 500 + `INTERNAL_ERROR` 且响应体里查不到 `/srv/secret`；验完删除，全量 132 仍绿。
+
+### 🐞 13. 加固 — Controller 跨层直连别人的 Repository
+- **现象**：`ContractController` 注入 `ReviewRepository` 直接查审查（合同列表/详情各一处）。
+- **根因**：合同模块需要「最近一次审查」，但 `ReviewService` 当时没有对应的只读方法，图省事就直接注了仓储；顺带把 N+1 也带进来了（见 10）。
+- **修复**：`ReviewService` 新增 `record LatestReview(reviewId, status)` 与 `latestReview(contractId)` / `latestReviews(contractIds)` 两个只读方法；Controller 只依赖 `ContractService` + `ReviewService`，返回轻量视图而不是整个 `Review` 实体（实体含 `pending_payload` 这类大字段）。
+- **验证**：`last_review` 字段名、状态小写取值、「无审查则不输出该字段」全部保持原样；132 测试全绿，`ContractControllerTest` 删掉已无引用的 `@MockBean ReviewRepository`。
+
 ---
 
 ## 三、经验 / 面试可讲的要点
@@ -89,9 +121,19 @@
 3. **`@Modifying` 必须有事务**：自调用也要在代理开启的事务内。
 4. **配置来源要可预测**：别靠 CWD 解析 `.env`，用 `Path(__file__)` 定位根配置文件。
 5. **前端代理 / 系统代理是本地联调的高频坑**：代理会把本地请求导到外网，表现成 502/500，排查时先排除代理。
+6. **默认值是一种承诺**：给数据库连接串配一个"看起来能用"的默认值，等于承诺"配置丢了也能跑"。连错库不会报错，只会安静地返回 0 命中——这种 bug 比启动失败难查一个数量级，所以宁可让构造期直接抛错。
+7. **全局兜底异常前先放行框架语义**：`ErrorResponse`（404/405/415）自带正确的状态码，一律按 500 兜底会把"路径写错"变成"服务挂了"。
+8. **索引跟着查询形态建**：`(过滤列, 排序列)` 联合索引，把"按合同过滤 + 取最新一条"一次走完；判断有没有索引要看实际 SQL，不是看表有没有主键。
 
 ## 四、提交记录（对应修复）
-- `c15f729` 阶段 13（含看门狗 Repository 方法预置）
-- `55b5c70` 阶段 14 看门狗初始
-- `dc71a87` 看门狗实机修复（bug2 + bug3）
+- `dd7e8f2` 阶段 13（含看门狗 Repository 方法预置）
+- `dd7d905` 阶段 14 看门狗初始
+- `9c5a15b` 看门狗实机修复（bug2 + bug3）
 - 阶段 15 修复随后续提交（bug6 + 启动脚本 + 测试）
+- `a306ed5` bug10 索引（V6）
+- `86f6aad` bug10 + bug13 分层与批量取最近审查
+- `21058a0` bug11 检索库 DSN fail-fast
+- `3d54277` bug12 异常兜底
+- `cbb8479` 配套文档：README 快速开始 + `.env.example` 说明 DSN 密码来源
+
+> 哈希以 `git log` 为准：2026-11-15 首次推送 GitHub 前做过一次「统一提交人身份」的历史重写（只改 author/committer，文件内容零差异），此前文档里引用的旧哈希已一并更新。
