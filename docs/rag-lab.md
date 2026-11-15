@@ -185,9 +185,14 @@ rerank 实现与成本（来自一次性 smoke 测试，**非**可复现 on/off 
 
 ## 9. 复现命令
 
-仓库根目录下（需先启动本地 pgvector 检索库 `_pg_tmp/` 并灌入法条向量）：
+仓库根目录下（需先有一个 pgvector 实例并灌入法条向量，见下方第 0 步；验收口径见 `docs/retrieval-acceptance.md`）：
 
 ```bash
+# 0) 灌库：建 schema + 5 策略切分 + 向量化，产出 13191 个 chunk / 2584 条向量
+#    （本机 docker pg 映射 55432，默认 DSN 的 5432/clauseguard_agent 是编排侧的库，别用混）
+CLAUSEGUARD_RETRIEVAL_PG_DSN='postgresql://clauseguard:clauseguard@localhost:55432/clauseguard_retrieval' \
+  python-agent/.venv/Scripts/python.exe -m retrieval.acceptance
+
 # 1) 改造前：mock 检索，30 份，真模型
 PYTHONPATH='python-agent;.' python-agent/.venv/Scripts/python.exe \
   -m eval.stage7.run --mode mock --n 30 --concurrency 2 --label mock

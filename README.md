@@ -307,6 +307,13 @@ span、6 个专家 span 同 trace 且挂在根 span 下、各自带 tokens」。
    影响范围：前端在后端故障时的错误文案准确性；触发条件：本机 `vite dev` 代理把「连不上」表现成
    HTTP 500（文案说「后端出错」），部署到 nginx 后才是 502（文案「连不上」）；「重连 N 次」口径只在
    事件流成立，已完成审查读 REST 快照不受影响。
+10. **未启 MinIO 时「下载带批注的 Word」必失败**：本地存储后端（`LocalStorageClient`）产出的
+   artifact URL 是 `file:///...`，`/api/v1/reviews/{id}/artifact` 把它原样放进 302 的 `Location`，
+   浏览器拒绝 302 跳到 `file://`（`ERR_UNSAFE_REDIRECT`）——这是浏览器的安全约束，不是文件没生成。
+   影响范围：仅产物下载这一个出口，审查、批注、状态流转均不受影响；触发条件：本机不启 MinIO 时必现。
+   临时可用：产物已落盘在 `java-service/uploads/artifacts/<contract_id>/v<ver>/annotated.docx`，
+   直接打开即可。正解是让该端点对 `file:` 分支由 Java 代理字节返回（浏览器只认 http(s)，也不该看到
+   存储实现细节），或启动 MinIO 让 `download_url` 变回 http 预签名。
 
 ## 修复记录
 
