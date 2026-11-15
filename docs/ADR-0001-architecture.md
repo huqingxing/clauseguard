@@ -11,7 +11,8 @@
 
 ### 为什么 Java 管业务、Python 管编排
 
-- **Java 管业务**：合同、审批、审计是系统的「事实来源」，需要强 schema、事务、审计可追溯、稳定的对内对外 REST。Spring Boot 3.5 + MyBatis-Plus 在这一层成熟且可维护；同时 Java 是唯一允许碰 MySQL 的一方，数据主权集中，权限与审计边界清晰。
+- **Java 管业务**：合同、审批、审计是系统的「事实来源」，需要强 schema、事务、审计可追溯、稳定的对内对外 REST。持久层用 **Spring Data JPA + Flyway**：schema 由 Flyway 独占（`ddl-auto: none`），JPA 只做映射，避免「代码建表 + 迁移脚本建表」双头管理；复杂查询用 `@Query` 或原生 SQL 下沉（超时回收的看门狗即为此例，同时绕开 `Instant → DATETIME` 的时区绑定偏移）。同时 Java 是唯一允许碰 MySQL 的一方，数据主权集中，权限与审计边界清晰。
+- **备选与否决（MyBatis）**：MyBatis 的强项是复杂 SQL、多表报表与「SQL 可见可调」。本项目四张表、以单表查询为主，派生查询（`findFirstByContractIdOrderByCreatedAtDesc` 等）用 JPA 的开发效率明显更高；引入 MyBatis 会增加 Mapper + XML 的维护成本，而收益有限。若后续出现大量多表报表或需要接手强 SQL 治理的存量库，应重新评估。
 - **Python 管编排**：多智能体审查本质是「LLM + 图编排 + 工具调用」，LangGraph/LangChain 只在 Python 生态成熟。把推理编排放 Python，可独立迭代 prompt、模型、图结构，而不动业务库。
 
 ### 铁律 1（Python 绝不直连业务库 MySQL）的取舍
