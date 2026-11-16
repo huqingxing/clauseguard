@@ -363,7 +363,8 @@ class ReviewServiceTest {
         assertThat(a1.getClauseId()).isEqualTo("c1");
         assertThat(a1.getBeforeWording()).isEqualTo("原文一");
         assertThat(a1.getRisk()).isEqualTo("high");
-        assertThat(a1.getAfterWording()).isNull(); // approve 不改措辞
+        // approve 不改措辞：审批后 = 审批前，不是 NULL（NULL 会让人分不清「没改」和「没记」）。
+        assertThat(a1.getAfterWording()).isEqualTo("原文一");
         // edit 项：后措辞为 edited_text。
         Approval a2 = cap.getAllValues().get(1);
         assertThat(a2.getClauseId()).isEqualTo("c2");
@@ -543,6 +544,51 @@ class ReviewServiceTest {
                 .isInstanceOf(ApprovalPayloadInvalidException.class);
 
         verify(approvalRepository, never()).save(any(Approval.class));
+    }
+
+    @Test
+    void approveRejectsEditWithoutEditedText() {
+        Review review = awaitingReview("r-editempty");
+        when(reviewRepository.findById("r-editempty")).thenReturn(Optional.of(review));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
+
+        // decision=edit 却没给 edited_text：不能拿 before 顶替写进 after ——
+        // 那会留下一条「决定是修改、措辞却没变」的自相矛盾记录。契约要求必填，服务端同样要拦。
+        ApproveRequest edit = new ApproveRequest()
+                .clauseId("c1")
+                .decision(ApproveRequest.DecisionEnum.EDIT)
+                .contractVersion("1")
+                .contentHash("hash-1");
+
+        assertThatThrownBy(() -> service.approveReview("r-editempty", List.of(edit), "alice"))
+                .isInstanceOf(ApprovalPayloadInvalidException.class);
+
+        verify(approvalRepository, never()).save(any(Approval.class));
+        verify(agentClient, never()).streamResume(anyString(), any(), anyString());
+    }
+
+    @Test
+    void approveWritesBeforeWordingAsAfterWordingWhenReject() {
+        Review review = awaitingReview("r-reject");
+        when(reviewRepository.findById("r-reject")).thenReturn(Optional.of(review));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
+        when(approvalRepository.save(any(Approval.class))).thenAnswer(i -> i.getArgument(0));
+        doReturn(Flux.empty()).when(agentClient).streamResume(eq("run-abc"), any(), anyString());
+
+        ApproveRequest reject = new ApproveRequest()
+                .clauseId("c1")
+                .decision(ApproveRequest.DecisionEnum.REJECT)
+                .comment("不接受该免责条款")
+                .contractVersion("1")
+                .contentHash("hash-1");
+
+        service.approveReview("r-reject", List.of(reject), "alice");
+
+        ArgumentCaptor<Approval> cap = ArgumentCaptor.forClass(Approval.class);
+        verify(approvalRepository).save(cap.capture());
+        // reject 同样不改措辞：审批后 = 审批前，审计里两列都得有值。
+        assertThat(cap.getValue().getBeforeWording()).isEqualTo("原文一");
+        assertThat(cap.getValue().getAfterWording()).isEqualTo("原文一");
     }
 
     private static Review awaitingReview(String id) {

@@ -122,7 +122,22 @@ public class ApprovalApplier {
             // 聚合后一条待审项可能覆盖多个风险维度（payment_risk + disclaimer_risk）：
             // 只存档位会让审计里看不出这条决定审了几类问题。
             approval.setRiskTypes(joinRiskTypes(item.path("risk_types")));
-            approval.setAfterWording(req.getEditedText());
+            // after_wording 的语义是「审批后的措辞」，不是「法务填的 edit 文本」：
+            // approve/reject 不改措辞，审批后 = 审批前；只有 edit 才用 edited_text。
+            // 曾经这里只有 setAfterWording(req.getEditedText())，于是 approve/reject 全落 NULL，
+            // 审计里前措辞有值、后措辞空白，读的人分不清「没改」和「没记」。
+            if (req.getDecision() == ApproveRequest.DecisionEnum.EDIT) {
+                String edited = req.getEditedText();
+                // 契约要求 decision=edit 必带 edited_text；缺了就整单拒绝，不能拿 before 顶替——
+                // 那会写出一条「决定是修改、措辞却没变」的自相矛盾记录。
+                if (edited == null || edited.isBlank()) {
+                    throw new ApprovalPayloadInvalidException(
+                            reviewId, "decision=edit 但缺少 edited_text: " + req.getClauseId());
+                }
+                approval.setAfterWording(edited);
+            } else {
+                approval.setAfterWording(approval.getBeforeWording());
+            }
             approvalRepository.save(approval);
         }
         // 状态已由抢占语句改成 RUNNING，这里只取 run_id 返回，不再重复 save：

@@ -44,14 +44,18 @@ public class Approval {
 
     /**
      * 审批后措辞：decision=edit 时为 edited_text；approve/reject 时与 before_wording 一致（未改）。
+     *
+     * <p>不写 NULL：审计要比对的是「审批前后两份措辞」，缺一份就答不上「这条到底改没改」。
      */
     @Column(name = "after_wording", columnDefinition = "TEXT")
     private String afterWording;
 
     /**
      * 该条款的风险档（high 等），来自 interrupt 事件项的 risk。
+     *
+     * <p>库上 V9 起是 NOT NULL：没有风险档的审批在合规意义上等于没批过。
      */
-    @Column(name = "risk", length = 32)
+    @Column(name = "risk", nullable = false, length = 32)
     private String risk;
 
     /**

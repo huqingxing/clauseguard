@@ -164,6 +164,17 @@
 - **实机回归**：正常路径 3 条待审 → 200、3 条全落库、`risk` 非空、`risk_types` 保留、状态 RUNNING、重复提交 409 且不增行；坏快照 → 422、0 条落库、状态仍是 `AWAITING_APPROVAL`（解析发生在状态抢占之前，连状态都没被改）。
 
 
+### 🐞 18. 数据诚信 — `after_wording` 是一列永远为空的字段（实体注释与代码互相矛盾）
+- **现象**：`SELECT COUNT(*) FROM approval` 共 37 行（36 approve + 1 reject），`before_wording` 37 行全有值，`after_wording` **37 行全 NULL**。同一张表里「审批前」有、「审批后」空，读的人根本分不清是「没改」还是「没记」。
+- **根因**：`ApprovalApplier` 只写了一行 `approval.setAfterWording(req.getEditedText())`。`edited_text` 按契约只在 `decision=edit` 时才填，`approve`/`reject` 恒为 null → 后措辞恒为 NULL。而 `Approval` 实体的注释写的是「approve/reject 时与 before_wording 一致（未改）」——**注释描述的是本来该有的行为，代码从来没实现过**。这种「注释正确、代码缺一步」比注释写错更难发现：查的人看到注释就以为已经处理了。
+- **为什么不能就这么留着**：审批留痕的价值全在「前后对比」。只有前、没有后，等于只能回答「批的是哪一条」，回答不了「批完之后措辞变成什么」。审计问的是后者。
+- **修复**：`decision == edit` 时写 `edited_text`；其余（`approve`/`reject`）写 `before_wording` —— 不改措辞，审批后措辞就等于审批前措辞。
+- **顺带堵一个洞**：`contracts/openapi.yaml` 里 `edited_text` 写着「decision=edit 时必填」，但那句注释说「用 allOf 约束」，**实际 schema 里并没有 allOf**，服务端也没有任何校验。也就是说 `decision=edit` 不带 `edited_text` 时，旧代码会把 NULL 写进 `after_wording`，等于「决定是修改、却没有修改后的内容」。现在补了服务端校验：`edit` 缺 `edited_text` → 422 `APPROVAL_PAYLOAD_INVALID`，整单拒绝。**不能拿 before 顶替**——那会写出一条「决定是修改、措辞却没变」的自相矛盾记录。
+- **验证**（红绿对照）：先按旧逻辑跑 → `ReviewServiceTest` 3 条变红（approve 后措辞断言、reject 后措辞断言、edit 缺文本该拒却没拒）；改回新逻辑 → 35 条全绿；全量 `mvn test` → **151 通过 / 0 失败 / 5 跳过**。
+- **历史数据没有回填**：存量 37 行是修复前写的，仍为 NULL。要让它一致得写一条数据迁移（`UPDATE ... SET after_wording = before_wording WHERE after_wording IS NULL AND decision IN ('approve','reject')`），但那会让迁移从 9 个变成 10 个。**先记着，不擅自加。**
+- **教训**：「字段存在」和「字段有值」是两件事。`NOT NULL` 只保证后者在**未来**成立，历史存量永远是 NULL，且没有任何告警会提醒你。加列之后必须查一次 `COUNT(*) WHERE col IS NULL`，否则这列可能从上线第一天就是死的。
+
+
 ---
 
 ## 三、经验 / 面试可讲的要点
@@ -185,6 +196,7 @@
 16. **fail-open 的典型形状是 `catch (Exception) { return 空集合; }`**：空集合和「解析失败」在调用方看起来一模一样，错误就此被降级成正常分支。凡是「结果为空」可能意味着坏掉了的地方，都必须把「合法为空」和「失败」显式分开。
 17. **审计路径宁可拒，不可降级**：写不进去只是体验问题（用户重试），写进去却缺关键字段是数据诚信问题（没人发现，无法补救）。判断标准不是「哪种更少打扰用户」，而是「半年后被审计翻出来，还能不能解释清楚」。
 18. **数据库约束要配一条代码层的前置校验**：`NOT NULL` 能把脏数据挡在库外，但触发时是 500 + 栈；先在代码里判一次并给出 422，约束才是兜底而不是报错来源。
+19. **「字段存在」不等于「字段有值」**：一列加上了不代表有人往里写。判断一列是不是死的，只有一条判据——`SELECT COUNT(*) WHERE col IS NULL` 跟总行数比。注释描述的行为也要单独验：注释对了、代码少一步，比注释写错更难查。
 
 ## 四、提交记录（对应修复）
 - `dd7e8f2` 阶段 13（含看门狗 Repository 方法预置）
