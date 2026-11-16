@@ -145,7 +145,6 @@ async def serial_review(state: ReviewState, config: RunnableConfig) -> dict[str,
 
     for spec in EXPERTS:
         scoped = scoped_clauses(state, spec, targets)
-        reviewed.extend(f"{spec.name}|{clause.clause_id}" for clause in scoped)
         if not scoped:
             continue
         if spec.priority == "low" and budget_exhausted(running):
@@ -178,6 +177,9 @@ async def serial_review(state: ReviewState, config: RunnableConfig) -> dict[str,
                 if outcome.metrics.clauses_ok:
                     counters.clauses_ok += 1
                     counters.ok_clause_ids = [*counters.ok_clause_ids, clause.clause_id]
+                    # 只把「审成」的 (专家, 条款) 记进 reviewed：失败条款绝不能缓存成
+                    # 「审过没问题」（见 expert_review 同名说明，两拓扑同口径）。
+                    reviewed.append(f"{spec.name}|{clause.clause_id}")
                 else:
                     counters.failed_clause_ids = [
                         *counters.failed_clause_ids,

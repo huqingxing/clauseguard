@@ -262,3 +262,41 @@ def test_llm_error_is_contained_per_clause(caplog: Any) -> None:
     assert result["findings"] == []
     assert result["budget"].spent_input_tokens == 0
     assert any("Agent 调用失败" in record.message for record in caplog.records)
+
+
+def test_failed_clauses_are_excluded_from_reviewed_pairs() -> None:
+    """片内部分条款模型调用失败：失败条款绝不能进 reviewed_pairs。
+
+    否则 cache_store 会把它写成「审过无问题」（空 findings 缓存），下次增量命中
+    空缓存直接跳过重审、漏检风险——把「没审」写成「审过没问题」。
+    """
+    corpus = stage7_corpus()
+    scoped = [
+        to_clause(spec, i)
+        for i, spec in enumerate(corpus, 1)
+        if get_expert("commercial").in_scope(spec.text)
+    ][:2]
+    failing_id = scoped[0].clause_id
+    ok_id = scoped[1].clause_id
+
+    class SelectiveFailModel(MockScriptedChatModel):
+        fail_clause_id: str = ""
+
+        def _respond(self, messages: Any) -> Any:
+            request = self._parse_request(messages)
+            if request and request[0] == self.fail_clause_id:
+                raise ConnectionError("模拟模型服务不可达")
+            return super()._respond(messages)
+
+    agent = build_expert_agent(
+        get_expert("commercial"),
+        SelectiveFailModel(specs=specs_by_id(corpus), fail_clause_id=failing_id),
+    )
+    result = asyncio.run(expert_review(_state(_task(scoped)), _config(EventEmitter(), agent)))
+
+    # 审成的进 reviewed_pairs，失败的绝不进。
+    assert result["reviewed_pairs"] == [f"commercial|{ok_id}"]
+    counters = result["review_counters"]
+    assert counters.ok_clause_ids == [ok_id]
+    assert counters.failed_clause_ids == [failing_id]
+    assert counters.llm_errors == 1

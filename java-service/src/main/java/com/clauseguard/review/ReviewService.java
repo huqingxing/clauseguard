@@ -473,6 +473,9 @@ public class ReviewService {
                                 subscribing.remove(reviewId);
                                 logger.warn(
                                         "resume stream failed for review {}: {}", reviewId, error.getMessage());
+                                // 与初始订阅同口径：resume 失败也要补偿终态，否则 review 卡在
+                                // RUNNING 直到看门狗兜底（handleAgentError 内部有幂等保护）。
+                                handleAgentError(reviewId, error);
                             },
                             () -> subscribing.remove(reviewId));
         }

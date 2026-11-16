@@ -10,10 +10,12 @@
 （「一条都没审成」）。刻意不写成「错误数 > 0 就失败」：那是把局部失败升级成整单
 失败，与上面的契约冲突，也会让 19 条里错 1 条的正常运行被判死。
 
-错误码分两种，因为处理方式不同：
+错误码分三种，因为处理方式不同：
 - MODEL_UNAVAILABLE（模型侧调用失败）→ 重试可能有用，retryable=true；
 - MODEL_OUTPUT_INVALID（每次都拿到不可解析的输出）→ 重试大概率同样失败，
-  但仍属「可安全重跑」，故同样 retryable=true，靠 code 区分根因。
+  但仍属「可安全重跑」，故同样 retryable=true；
+- EXPERT_REVIEW_FAILED（分片装配/运行异常，既非模型失败也非解析失败）→ 同样
+  retryable=true，靠 code 区分根因。
 """
 
 from __future__ import annotations
@@ -31,6 +33,9 @@ NODE_NAME = "model_gate"
 
 MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
 MODEL_OUTPUT_INVALID = "MODEL_OUTPUT_INVALID"
+# 分片装配/运行异常：expert_review 的 except 分支刻意不记 llm/parse_errors（见其注释），
+# 全灭且两个错误计数都是 0 时，根因既不是「模型失败」也不是「输出不可解析」。
+EXPERT_REVIEW_FAILED = "EXPERT_REVIEW_FAILED"
 
 
 class ModelUnavailableException(RuntimeError):
@@ -65,7 +70,14 @@ async def model_gate(state: ReviewState, config: RunnableConfig) -> dict[str, ob
     if counters.clauses_ok > 0:
         return {}
 
-    code = MODEL_UNAVAILABLE if counters.llm_errors > 0 else MODEL_OUTPUT_INVALID
+    if counters.llm_errors > 0:
+        code = MODEL_UNAVAILABLE
+    elif counters.parse_errors > 0:
+        code = MODEL_OUTPUT_INVALID
+    else:
+        # 既无模型失败也无解析失败却全灭：分片装配/运行异常（expert_review 的 except 分支
+        # 不记 llm_errors，否则会把「装配错误」说成「模型不可用」）。
+        code = EXPERT_REVIEW_FAILED
     message = (
         f"全部 {counters.clauses_attempted} 个审查单元均未产出可用结论"
         f"（模型调用失败 {counters.llm_errors}，输出不可解析 {counters.parse_errors}）："
