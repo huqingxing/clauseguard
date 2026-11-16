@@ -7,6 +7,7 @@
 import { computed } from 'vue'
 import { artifactUrl } from '../api/reviews'
 import type { RunCompletedEvent } from '../types/events'
+import { unreviewedNotice as unreviewed } from '../utils/degraded'
 
 const props = defineProps<{
   completed: RunCompletedEvent | null
@@ -21,6 +22,12 @@ const tokenTotal = computed(() => {
   return usage ? usage.input_tokens + usage.output_tokens : 0
 })
 const hitRate = computed(() => props.completed?.incremental?.cache_hit_rate ?? 0)
+
+/**
+ * 未审条款提示（Stage 15）：文案规则在 utils/degraded.ts，那里有单测钉住分支。
+ * 这里只负责「有就显示」——组件里写文案等于把唯一的口径分散到模板里。
+ */
+const unreviewedNotice = computed(() => unreviewed(props.completed?.degraded_detail))
 
 const artifactHref = computed(() => {
   if (!props.completed?.artifact) return ''
@@ -68,6 +75,15 @@ const rows = computed(() => {
       <el-tag v-if="completed.degraded" type="danger" size="small" effect="plain">已降级</el-tag>
     </div>
 
+    <el-alert
+      v-if="unreviewedNotice"
+      :title="unreviewedNotice"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="unreviewed"
+    />
+
     <el-descriptions :column="1" border size="small">
       <el-descriptions-item v-for="row in rows" :key="row.label" :label="row.label">
         {{ row.value }}
@@ -97,5 +113,9 @@ const rows = computed(() => {
 
 .artifact {
   margin-top: 10px;
+}
+
+.unreviewed {
+  margin-bottom: 10px;
 }
 </style>

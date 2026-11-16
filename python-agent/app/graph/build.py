@@ -1,5 +1,5 @@
-"""图拓扑：ingest -> diff -> dispatch -> (Send fan-out: expert_review ×N) -> critic ->
-cache_store -> human_approval -> render -> END。
+"""图拓扑：ingest -> diff -> dispatch -> (Send fan-out: expert_review ×N) -> model_gate ->
+critic -> cache_store -> human_approval -> render -> END。
 
 并行模式（默认，execution_mode=parallel）：dispatch 按专家范畴把条款切成
 ≤8 条的分片，经 LangGraph Send API 动态派发；同名词节点被多个分片并发调用，
@@ -13,8 +13,8 @@ Stage 9 起 human_approval 是图内人工审批断点：存在 risk_level=high 
 interrupt() 挂起（运行态由 Postgres checkpointer 持久化，可恢复），否则放行进入
 render；render 本阶段仅占位，保证审批后图抵达 END 并下发 run.completed。
 
-串行模式（execution_mode=serial）：ingest -> diff -> serial_review -> critic ->
-cache_store -> human_approval -> render -> END，同一引擎顺序执行，用于并行/串行对照与降级兜底。
+串行模式（execution_mode=serial）：ingest -> diff -> serial_review -> model_gate ->
+critic -> cache_store -> human_approval -> render -> END，同一引擎顺序执行，用于并行/串行对照与降级兜底。
 
 Stage 11 的两个新节点：
 - diff（ingest 之后）：算版本 diff、命中缓存即复用、removed 条款历史 finding 标 stale，
@@ -46,6 +46,7 @@ from app.graph.nodes.dispatch import dispatch
 from app.graph.nodes.expert_review import expert_review
 from app.graph.nodes.human_approval import human_approval
 from app.graph.nodes.ingest import ingest
+from app.graph.nodes.model_gate import model_gate
 from app.graph.nodes.render import render
 from app.graph.nodes.serial_review import serial_review
 from app.graph.state import Budget, ReviewState
@@ -132,6 +133,7 @@ def build_graph(
 
     builder.add_node("critic", _traced("critic", critic_node))
     builder.add_node("cache_store", _traced("cache_store", cache_store))
+    builder.add_node("model_gate", _traced("model_gate", model_gate))
     builder.add_node("human_approval", _traced("human_approval", human_approval))
     builder.add_node("render", _traced("render", render))
     builder.add_node("diff", _traced("diff", diff_node))
@@ -140,8 +142,9 @@ def build_graph(
         builder.add_edge(START, "ingest")
         builder.add_edge("ingest", "diff")
         builder.add_edge("diff", "serial_review")
-        # 串行模式的打回也回到 serial_review（只重审指令条款），再汇入 critic。
-        builder.add_edge("serial_review", "critic")
+        # 串行模式的打回也回到 serial_review（只重审指令条款），再经 model_gate 汇入 critic。
+        builder.add_edge("serial_review", "model_gate")
+        builder.add_edge("model_gate", "critic")
     else:
         builder.add_node("dispatch", _traced("dispatch", dispatch))
         builder.add_node("expert_review", _traced("expert_review", expert_review, _expert_describe))
@@ -149,8 +152,11 @@ def build_graph(
         builder.add_edge("ingest", "diff")
         builder.add_edge("diff", "dispatch")
         # dispatch 的派发/收尾全部经 Command(goto=[Send...] | END) 动态路由，
-        # 这里只声明 fan-out 目标的静态出边；分片执行完毕即汇入 critic。
-        builder.add_edge("expert_review", "critic")
+        # 这里只声明 fan-out 目标的静态出边；分片执行完毕先过 model_gate 再汇入 critic。
+        # model_gate 挡的是「一条都没审成」：没有它就是 COMPLETED + 0 findings，
+        # 用户会把「模型不可用」读成「合同无风险」。
+        builder.add_edge("expert_review", "model_gate")
+        builder.add_edge("model_gate", "critic")
     # critic 的三条出路全部经 Command(goto=...) 动态路由，不建静态出边：
     #   - 通过/不可路由/轮数用尽/预算耗尽 -> goto="cache_store"；
     #   - 并行打回 -> goto=[Send("expert_review", 载荷)]；

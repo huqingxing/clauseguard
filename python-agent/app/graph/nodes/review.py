@@ -218,6 +218,9 @@ async def review_clause(
 
     outcome.metrics.input_tokens = input_tokens
     outcome.metrics.output_tokens = output_tokens
+    # 只有解析出符合契约的结论才算「审成」：此处之前的任何 return 都是未审成
+    # （llm_errors / parse_errors），model_gate 依据 clauses_ok 判定全灭。
+    outcome.metrics.clauses_ok = 1
     whitelist = extract_whitelist(messages)
     clause_dropped = 0
     for raw_finding in parsed.findings:
@@ -260,6 +263,7 @@ async def review_expert_shard(
     metrics: ReviewMetrics | None = None,
     limiter: asyncio.Semaphore | None = None,
     rework_hints: dict[str, str] | None = None,
+    clause_outcomes: list[ClauseOutcome] | None = None,
 ) -> tuple[list[Finding], ReviewMetrics]:
     """并发审查一个分片内的条款（asyncio.gather，模型调用经 limiter 限流）。
 
@@ -269,6 +273,10 @@ async def review_expert_shard(
 
     rework_hints：clause_id -> Critic 重审指令；命中条款首次调用即注入修正指令
     （Stage 8 打回重审），未命中条款走常规重试指令。
+
+    clause_outcomes：可选的旁路收集器，按入参 clauses 同序回填每条的 ClauseOutcome。
+    为什么用旁路而不是改返回值：调用方需要「哪一条没审成」（降级提示按条款计），
+    而返回二元组已被 6 处测试锁定；旁路保持既有契约不变。
     """
     accumulated = metrics if metrics is not None else ReviewMetrics()
     retry_hint = spec.load_retry_hint()
@@ -291,6 +299,8 @@ async def review_expert_shard(
     for clause_outcome in outcomes:
         findings.extend(clause_outcome.findings)
         accumulated = accumulated.merged_with(clause_outcome.metrics)
+    if clause_outcomes is not None:
+        clause_outcomes.extend(outcomes)
     return findings, accumulated
 
 

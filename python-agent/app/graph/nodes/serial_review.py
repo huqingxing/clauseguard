@@ -34,6 +34,7 @@ from app.graph.nodes.review import review_clause
 from app.graph.state import (
     Budget,
     Finding,
+    ReviewCounters,
     ReviewState,
     ReworkInstruction,
     budget_delta,
@@ -139,6 +140,8 @@ async def serial_review(state: ReviewState, config: RunnableConfig) -> dict[str,
     total_cost = 0.0
     targets = incremental_targets(state)
     reviewed: list[str] = []
+    # 与并行拓扑同口径的条款级成败账本（model_gate 与降级提示消费）。
+    counters = ReviewCounters()
 
     for spec in EXPERTS:
         scoped = scoped_clauses(state, spec, targets)
@@ -167,6 +170,19 @@ async def serial_review(state: ReviewState, config: RunnableConfig) -> dict[str,
             expert_findings.extend(outcome.findings)
             expert_in += outcome.metrics.input_tokens
             expert_out += outcome.metrics.output_tokens
+            # 只有「进了模型调用」的条款才计入账本；范畴外跳过的不进（与并行同口径）。
+            if outcome.metrics.clauses_reviewed:
+                counters.clauses_attempted += 1
+                counters.llm_errors += outcome.metrics.llm_errors
+                counters.parse_errors += outcome.metrics.parse_errors
+                if outcome.metrics.clauses_ok:
+                    counters.clauses_ok += 1
+                    counters.ok_clause_ids = [*counters.ok_clause_ids, clause.clause_id]
+                else:
+                    counters.failed_clause_ids = [
+                        *counters.failed_clause_ids,
+                        clause.clause_id,
+                    ]
         settings = get_agent_settings()
         expert_cost = settings.cost_cny(expert_in, expert_out)
         await emitter.emit(
@@ -212,4 +228,5 @@ async def serial_review(state: ReviewState, config: RunnableConfig) -> dict[str,
         "budget": budget_delta(total_in, total_out, total_cost),
         "degraded": degraded,
         "reviewed_pairs": reviewed,
+        "review_counters": counters,
     }

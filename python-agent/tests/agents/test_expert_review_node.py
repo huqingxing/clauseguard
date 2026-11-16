@@ -208,7 +208,14 @@ def test_node_failure_emits_node_failed_and_degrades_without_raising() -> None:
     }
     # 不抛异常是本条验收的核心：node.failed 语义 + degraded，其余分支可继续。
     result = asyncio.run(expert_review(_state(_task(scoped)), config))
-    assert result == {"degraded": True}
+    assert result["degraded"] is True
+    # 整片没跑起来：本片条款全部记成「未审成」，但不记 llm_errors——
+    # 装配错误不是模型调用失败，混进去会让 model_gate 报错错误的根因。
+    counters = result["review_counters"]
+    assert counters.clauses_attempted == len(scoped)
+    assert counters.clauses_ok == 0
+    assert counters.llm_errors == 0
+    assert counters.failed_clause_ids == [clause.clause_id for clause in scoped]
     events = _drain(emitter)
     failed = [e for e in events if e.type == EventType.NODE_FAILED.value]
     assert len(failed) == 1

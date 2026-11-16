@@ -28,6 +28,7 @@ from app.agents.spec import build_expert_agent
 from app.events import EventType, get_emitter
 from app.graph.nodes.review import review_expert_shard
 from app.graph.state import (
+    ReviewCounters,
     ReviewState,
     ReviewTask,
     budget_delta,
@@ -62,6 +63,32 @@ def get_agent_factory(config: RunnableConfig) -> AgentFactory:
     return factory if factory is not None else build_expert_agent
 
 
+def _counters_of(clauses: Any, outcomes: list[Any], metrics: Any) -> ReviewCounters:
+    """把本分片的条款级成败折成 ReviewCounters。
+
+    三类结果必须分开，否则「未审」会被算错：
+    - clauses_ok > 0：审成（ok_clause_ids）；
+    - clauses_reviewed = 1 且 clauses_ok = 0：有调用但没拿到可用结论（failed_clause_ids）；
+    - clauses_skipped = 1：范畴外跳过，既不算审成也不算失败（不记 ID）。
+    """
+    ok_ids: list[str] = []
+    failed_ids: list[str] = []
+    for clause, outcome in zip(clauses, outcomes):
+        clause_metrics = outcome.metrics
+        if clause_metrics.clauses_ok:
+            ok_ids.append(clause.clause_id)
+        elif clause_metrics.clauses_reviewed:
+            failed_ids.append(clause.clause_id)
+    return ReviewCounters(
+        clauses_attempted=metrics.clauses_reviewed,
+        clauses_ok=metrics.clauses_ok,
+        llm_errors=metrics.llm_errors,
+        parse_errors=metrics.parse_errors,
+        ok_clause_ids=ok_ids,
+        failed_clause_ids=failed_ids,
+    )
+
+
 async def expert_review(state: ReviewState, config: RunnableConfig) -> dict[str, object]:
     """图节点：审查一个专家分片；返回 findings/budget 增量/degraded。"""
     task: ReviewTask = state["review_task"]
@@ -86,6 +113,7 @@ async def expert_review(state: ReviewState, config: RunnableConfig) -> dict[str,
 
     await emitter.emit(EventType.NODE_STARTED, node=node_name, agent=spec.agent_name)
     started = time.monotonic()
+    outcomes: list[Any] = []
     try:
         agent = factory(spec)
         contract_meta = {"contract_id": state["contract_id"], "version": state["version"]}
@@ -98,6 +126,8 @@ async def expert_review(state: ReviewState, config: RunnableConfig) -> dict[str,
             # 打回轮载荷携带重审指令（Send 节点不见父状态，只能随载荷传入）；
             # 普通派发该字典为空，行为与 Stage 7 完全一致。
             rework_hints=task.rework_hints,
+            # 旁路收集每条的成败：降级提示要按「条款」而不是「单元」报数。
+            clause_outcomes=outcomes,
         )
     except Exception as exc:
         # 捕获而不扩散：发 node.failed（分支中止语义）、置 degraded，其余分片继续。
@@ -110,7 +140,15 @@ async def expert_review(state: ReviewState, config: RunnableConfig) -> dict[str,
             message=str(exc)[:200],
         )
         logger.exception("分片 %s#%d 执行失败，其余分支继续", spec.name, task.shard_index)
-        return {"degraded": True}
+        # 整片没跑起来：本片条款一律算未审成（不记 llm_errors —— 那不是模型调用失败，
+        # 记进去会把「装配错误」说成「模型不可用」）。全部分片都如此时 model_gate 判死。
+        return {
+            "degraded": True,
+            "review_counters": ReviewCounters(
+                clauses_attempted=len(task.clauses),
+                failed_clause_ids=[clause.clause_id for clause in task.clauses],
+            ),
+        }
 
     duration_ms = int((time.monotonic() - started) * 1000)
     total_tokens = metrics.input_tokens + metrics.output_tokens
@@ -146,4 +184,5 @@ async def expert_review(state: ReviewState, config: RunnableConfig) -> dict[str,
         "reviewed_pairs": [
             f"{spec.name}|{clause.clause_id}" for clause in task.clauses
         ],
+        "review_counters": _counters_of(task.clauses, outcomes, metrics),
     }

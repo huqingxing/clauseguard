@@ -27,6 +27,8 @@
 | 15 | 运维 | `flyway_schema_history` 停在 v5，V6 的索引在库里根本不存在 | 测试要么不连库、要么显式关 Flyway，迁移从未被真实执行过 | 用 flyway-maven-plugin 对本地库实跑 `migrate`，v5 → v7 |
 | 16 | 设计 | 审批提交 21 条，只落 17 条 | 上游 `build_interrupt_payload` 按 finding 生成 items，一个 clause 被两个风险维度命中就出两条 | `build_interrupt_payload` 按 clause_id 聚合 + `V8` 加 `risk_types` 列 + 前端兼容两代事件 |
 | 17 | 数据诚信 | 快照 JSON 坏了，审批仍 200 成功，`risk`/`before_wording` 全为 NULL | `parsePendingItems` 用一个 catch 把「合法空」和「解析失败」都返回空 map（fail-open） | 解析失败抛 422 `APPROVAL_PAYLOAD_INVALID` + 写入要求快照依据 + `V9` 把 `risk` 改 NOT NULL |
+| 18 | 数据诚信 | `approval.after_wording` 37 行全 NULL，前有后空分不清「没改」还是「没记」 | 只写 `edited_text`（仅 `decision=edit` 有值），注释描述的行为代码没实现 | `edit` 写 `edited_text`、其余写 `before_wording`；`edit` 缺文本 → 422；历史 37 行不回填 |
+| 19 | 正确性 | 密钥 401/403 全灭时，系统报「审查完成，0 个问题」（`COMPLETED` + `findings_count=0`） | `review_clause` 把异常收进 `metrics.llm_errors` 后返回空列表，该指标不进结论，`degraded` 恒 false | 新增 `model_gate`（`clauses_ok==0 && attempted>0` → `run.failed{MODEL_UNAVAILABLE}`）+ `run.completed.degraded_detail` 可选字段 + 前端黄条 |
 
 ---
 
@@ -183,6 +185,32 @@
 
 ---
 
+### 🐞 19. 正确性 — 模型全部不可用时，系统报「审查完成，0 个问题」
+- **现象（同一个洞，两次真实事故）**：
+  1. Windows 用户环境变量里是失效密钥 → 7 个专家全 401，日志逐条刷「调用失败，跳过该条款」；
+  2. 换一把额度用尽的密钥 → 全 403 `AllocationQuota.FreeTierOnly`。
+  两次的终态都是 `review.status=COMPLETED`、`run.completed{findings_count:0, degraded:false}`、`usage` 全 0。**一次彻底失败的审查，被包装成「这份合同没有风险」**——这比报错危险得多：报错用户会重试，报「0 个问题」用户会拿着这份结论去签约。
+- **根因**：`review_clause` 的契约是「单条款失败不炸整轮 run」——这条契约本身是对的（19 条错 1 条不该整单失败）。但它把所有异常收进 `metrics.llm_errors` 后就返回空列表，而这个指标**只进日志、不进结论**；`degraded` 只在「分片整体抛异常」「预算不足」「ingest 失败」时才置真。于是「全部失败」与「真的没问题」在事件流上完全不可区分。
+- **修复 A（正确性，先做）**：新增 `model_gate` 节点，位置在专家分片汇合之后、`critic` 之前。判定条件是一条：**`clauses_ok == 0` 且 `clauses_attempted > 0`**（一条都没审成），满足即抛 `ModelUnavailableException` → 编排层下发 `run.failed{code=MODEL_UNAVAILABLE, retryable=true}`，Java 侧据此置 `FAILED`。
+  - 刻意**不**写成「错误数 > 0 就失败」：那是把局部失败升级成整单失败，与上面那条契约冲突。
+  - 错误码分两个：全是模型调用失败 → `MODEL_UNAVAILABLE`；全是输出不可解析 → `MODEL_OUTPUT_INVALID`。混成一个会把「输出契约崩了」的排查引向配额。
+  - 门放在 `critic` / `cache_store` / `render` 之前：晚一步的代价是「空结论写进缓存」「生成一份干净的批注稿」，这两个副作用都比失败本身贵。
+- **修复 B（信息量，后做）**：`run.completed` 增加可选字段 `degraded_detail{unreviewed_clauses, llm_errors}`，前端只在 `unreviewed_clauses > 0` 时显示黄条「本次有 N 条因模型不可用未审查，结果可能不完整」。
+  - **没有新增事件类型**：新增 `run.degraded` 要改 schema 枚举、前端 handler 分支、以及所有按 `type == "run.completed"` 判断的地方；加一个可选字段只影响一处渲染。
+  - **也没有把 `degraded` 改成对象**（原方案是 `degraded: {unreviewed_clauses, llm_errors}`）：`degraded` 已经是布尔量且被四条路径共用（预算跳过/分片失败/ingest 降级/本次），改类型要同时动 `events.schema.json`、pydantic 契约、`web/src/types/events.ts` 和 Java 侧补丁。改类型和加字段的收益一样，成本差 3 倍。
+- **计数粒度（动 B 之前必须先确认的事）**：`metrics` 是**「条款 × 专家」单元级**——同一条款被两位专家审就是 2 个单元。实机数据：19 条条款 → **41 个单元**。所以直接拿 `llm_errors` 当「N 条未审查」会报出比条款总数还大的数，用户一眼就知道是假的。现在的口径：
+  - `unreviewed_clauses` = 失败过的条款 ID − 至少被一位专家审成的条款 ID（按条款去重）；
+  - `llm_errors` 保留单元数，用于区分根因。
+  实现上 `ReviewMetrics` 加 `clauses_ok`（与 `clauses_reviewed` 的差别是：调用失败时 `clauses_reviewed` 仍是 1），`review_expert_shard` 用旁路收集器回填每条 `ClauseOutcome`——**没有改它的返回签名**，那被 6 处测试锁定。
+- **验证**：
+  - 红绿对照：把 `model_gate` 临时改回放行、`degraded_detail` 临时置 None → 新增的 4 条用例全红；恢复后 8 条全绿。
+  - 全量：Python **381 通过**、Java **151 通过 / 0 失败 / 5 跳过**、前端 **39 通过** + `vue-tsc` 构建通过。
+  - 实机（失效密钥 401）：19 条款 / **41 个单元全部失败** → `model_gate` 拦截 → `node.failed{code=MODEL_UNAVAILABLE}` + `run.failed{code=MODEL_UNAVAILABLE, retryable=true}`，`review.status=FAILED`，事件流里**没有** `critic` / `cache_store` / `render` / `run.completed`，`approval` 0 行。
+- **教训**：`catch (Exception) → 返回空集合` 这种写法，在「单条失败」时是对的，在「全部失败」时会把系统变成一台**自信的谎话机器**。降级的判定不能只看「有没有异常被捕获」，要看「有没有任何一条真的成功」。判断标准很简单：**这份结论如果被当真，会让人做错什么决定。**
+
+
+---
+
 ## 三、经验 / 面试可讲的要点
 1. **mock 单测覆盖不到真实 JPA/Hibernate 绑定与事务边界**——关键路径必须跑真实 DB 实机验收（阶段 14 两个真 bug 都是这么揪出来的）。
 2. **时区是隐形杀手**：`Instant`/`DATETIME` 绑定偏 8h、`TIMESTAMP` 四舍五入偏 1s——统一用 UTC 字符串字面传参最稳。
@@ -204,6 +232,8 @@
 18. **数据库约束要配一条代码层的前置校验**：`NOT NULL` 能把脏数据挡在库外，但触发时是 500 + 栈；先在代码里判一次并给出 422，约束才是兜底而不是报错来源。
 19. **「字段存在」不等于「字段有值」**：一列加上了不代表有人往里写。判断一列是不是死的，只有一条判据——`SELECT COUNT(*) WHERE col IS NULL` 跟总行数比。注释描述的行为也要单独验：注释对了、代码少一步，比注释写错更难查。
 20. **历史数据不可改，只能追加**：发现存量数据不完整，第一反应不该是 `UPDATE` 补齐。补进去的那一刻，「当时的真实状态」就永久丢了，而且事后无法区分原始与补写。审计类表尤其如此——宁可在页面上标注「该版本无记录」，也不要让一条补出来的值冒充当时的事实。
+21. **「没有异常」不等于「有结论」**：`catch (Exception) → 返回空集合` 在单条失败时是正确设计，在全灭时会产出一份自信的错误结论。判断降级不能数异常，要数**成功条数**：`ok == 0 且 attempted > 0` 就是失败。
+22. **降级要有可数的单位，且单位必须跟用户看到的东西一致**：指标按「条款×专家」记，界面却按「条款」说，直接透传就会出现「19 条合同里 41 条没审」这种一眼假的数据。**统计口径和展示口径不一致，等于没有口径。**
 
 ## 四、提交记录（对应修复）
 - `dd7e8f2` 阶段 13（含看门狗 Repository 方法预置）

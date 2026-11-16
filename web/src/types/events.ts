@@ -40,6 +40,14 @@ export interface Quality {
   unverified_count: number
 }
 
+/** run.completed.degraded_detail：部分条款没审成时的明细（模型不可用/输出不可解析）。 */
+export interface DegradedDetail {
+  /** 一条都没审成的条款数（按条款去重，同一条款任一专家审成即不计入）。 */
+  unreviewed_clauses: number
+  /** 模型调用失败的审查单元数（条款×专家），用于区分调不通与输出不可解析。 */
+  llm_errors: number
+}
+
 export interface Artifact {
   object_key: string
   download_url: string
@@ -56,6 +64,8 @@ export interface RunCompletedEvent {
   /** Stage 12：明细随事件下发（已剔除 stale），工作台据此直接渲染，免去再拉一次 REST。 */
   findings?: Finding[]
   degraded?: boolean
+  /** 有条款没审成时才出现；缺省即「本次全部条款都审成了」。 */
+  degraded_detail?: DegradedDetail | null
   quality: Quality
   artifact?: Artifact | null
   incremental?: IncrementalInfo | null

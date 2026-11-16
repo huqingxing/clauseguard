@@ -188,6 +188,30 @@
           "default": false,
           "description": "是否发生降级：预算超限跳过低优先级专家（ip/data/compliance）、节点失败或 Critic 因预算耗尽放弃打回时为 true。"
         },
+        "degraded_detail": {
+          "anyOf": [
+            {
+              "type": "object",
+              "description": "Stage 15：部分条款未审成（模型不可用/输出不可解析）时的明细。",
+              "required": ["unreviewed_clauses", "llm_errors"],
+              "properties": {
+                "unreviewed_clauses": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "一条都没审成的条款数（按条款去重：同一条款任一专家审成即不计入）。"
+                },
+                "llm_errors": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "模型调用失败的审查单元数（条款×专家）；用于区分「调不通」与「输出不可解析」。"
+                }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ],
+          "description": "Stage 15：部分条款未审成时的明细；全部审成时为 null（与 artifact 同一可空写法）。"
+        },
         "quality": {
           "type": "object",
           "description": "Critic 确定性校验的质量指标（Stage 8）。",

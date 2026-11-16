@@ -27,6 +27,9 @@ class ReviewMetrics(BaseModel):
 
     clauses_reviewed: int = 0
     clauses_skipped: int = 0
+    # 成功拿到「可解析结论」的条款数。与 clauses_reviewed 的差别是本轮 A 判定的全部依据：
+    # clauses_reviewed 只表示「进了模型调用」，调用失败/两次解析都失败时它依然是 1。
+    clauses_ok: int = 0
     findings_emitted: int = 0
     dropped_citations: int = 0
     unverified_findings: int = 0

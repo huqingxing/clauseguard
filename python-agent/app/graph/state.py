@@ -270,6 +270,58 @@ def merge_event_seq(left: int, right: int) -> int:
     return max(left, right)
 
 
+class ReviewCounters(BaseModel):
+    """本轮审查的计数账本，供 model_gate（全灭判定）与降级提示消费。
+
+    两个口径必须分开，否则数字对不上用户认知：
+    - 计数是「条款 × 专家」单元级（同一条款被两个专家审 = 2 个单元）；
+    - ok/failed_clause_ids 是条款 ID 级，未审条款数 = failed − ok，
+      即「这条没有任何一位专家审成」，与前端「N 条未审查」的说法一致。
+
+    为什么不用 ReviewMetrics 直接当通道：那是引擎内部的指标模型（在 agents 层，
+    反向依赖会造成循环导入），且运行态只需要这几个字段进 checkpoint。
+    """
+
+    clauses_attempted: int = Field(default=0, description="进入模型调用的单元数（含失败）。")
+    clauses_ok: int = Field(default=0, description="拿到可解析结论的单元数；为 0 且有调用即全灭。")
+    llm_errors: int = Field(default=0, description="模型调用失败的单元数。")
+    parse_errors: int = Field(default=0, description="两次解析都失败的单元数。")
+    ok_clause_ids: list[str] = Field(default_factory=list, description="至少一位专家审成的条款。")
+    failed_clause_ids: list[str] = Field(
+        default_factory=list, description="有调用但未审成的条款（同一 ID 可出现多次）。"
+    )
+
+    def merged_with(self, other: "ReviewCounters") -> "ReviewCounters":
+        """逐项相加、ID 去重保序；与 ReviewMetrics.merged_with 同一语义。"""
+        return ReviewCounters(
+            clauses_attempted=self.clauses_attempted + other.clauses_attempted,
+            clauses_ok=self.clauses_ok + other.clauses_ok,
+            llm_errors=self.llm_errors + other.llm_errors,
+            parse_errors=self.parse_errors + other.parse_errors,
+            ok_clause_ids=_union_ids(self.ok_clause_ids, other.ok_clause_ids),
+            failed_clause_ids=_union_ids(self.failed_clause_ids, other.failed_clause_ids),
+        )
+
+    @property
+    def unreviewed_clause_ids(self) -> list[str]:
+        """一条都没审成的条款：失败过、且从未被任何专家审成（按条款去重）。"""
+        reviewed = set(self.ok_clause_ids)
+        return [clause_id for clause_id in self.failed_clause_ids if clause_id not in reviewed]
+
+
+def _union_ids(left: list[str], right: list[str]) -> list[str]:
+    """保序去重并集（只用 set 做成员判断，顺序按首次出现）。"""
+    merged: dict[str, None] = {item: None for item in left}
+    for item in right:
+        merged.setdefault(item, None)
+    return list(merged)
+
+
+def merge_review_counters(left: ReviewCounters, right: ReviewCounters) -> ReviewCounters:
+    """LangGraph reducer：各分片的计数账本相加（并行分支并发写同一通道）。"""
+    return left.merged_with(right)
+
+
 class ReworkInstruction(BaseModel):
     """Critic 打回指令：哪个专家的哪条条款、为什么没通过、要改什么。
 
@@ -379,6 +431,10 @@ class ReviewState(TypedDict):
     # 为什么需要它：缓存必须记下「这条没发现问题」这个结论——只缓存有 finding 的条款，
     # 正常条款每次增量都要重审，省钱幅度会被打掉一半以上。
     reviewed_pairs: NotRequired[Annotated[list[str], merge_reviewed]]
+    # ---- Stage 15 模型不可用 → fail-closed（全灭即失败）+ 部分未审的降级明细 ----
+    # 各分片只报自己的增量，由 merge_review_counters 累加；缺失即视为「没有统计数据」，
+    # model_gate 与 run.completed 都按「不知道就不声称」处理（不臆造未审条数）。
+    review_counters: NotRequired[Annotated[ReviewCounters, merge_review_counters]]
     # ---- Stage 12 合同源（Java 上传时随运行请求透传）----
     # 描述「文件在哪、怎么取」：download_url 指向 Java 的内容端点（Python 经 REST 拉文件，
     # 铁律 1）。ingest 据此下载解析；缺失即显式降级（node.failed + 空条款）。

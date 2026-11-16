@@ -43,6 +43,7 @@ from app.contracts.models import RiskLevel
 from app.db import DbPool, InMemoryRunRegistry, RunRegistry
 from app.events import SENTINEL, EventEmitter, EventType
 from app.graph.build import build_graph
+from app.graph.nodes.model_gate import ModelUnavailableException
 from app.graph.state import (
     FULL_MODE,
     INCREMENTAL_MODE,
@@ -204,6 +205,27 @@ def _incremental_of(result: ReviewState) -> dict[str, Any]:
     if not isinstance(info, IncrementalInfo):
         return {"mode": FULL_MODE, "reused_findings": 0, "cache_hit_rate": 0.0}
     return info.model_dump(mode="json")
+
+
+def _degraded_detail_of(result: ReviewState) -> dict[str, int] | None:
+    """部分条款没审成时的降级明细（Stage 15），无未审条款时返回 None。
+
+    为什么单独给一个字段而不是把 degraded 改成对象：degraded 已是布尔量，被
+    「预算超限跳过」「分片失败」「ingest 降级」共用，前端 RunSummary 也读它；
+    改类型要同时动 schema、pydantic 契约、TS 类型和 Java 侧补丁，收益只是少一个字段名。
+    新增可选字段只影响一处渲染，契约上等价。
+
+    unreviewed_clauses 按「条款」而不是「条款×专家」计：同一条款被两位专家审、
+    一位成功一位失败时，它有结论，不该算未审。llm_errors 保留单元数，用于区分
+    「模型调不通」与「模型输出不可解析」。
+    """
+    counters = result.get("review_counters")
+    if counters is None:
+        return None
+    unreviewed = len(counters.unreviewed_clause_ids)
+    if unreviewed == 0:
+        return None
+    return {"unreviewed_clauses": unreviewed, "llm_errors": counters.llm_errors}
 
 
 def _findings_of(result: ReviewState) -> list[dict[str, Any]]:
@@ -400,6 +422,17 @@ async def _execute_run(
                 result = await graph.ainvoke(Command(resume=resume), config)
             else:
                 result = await graph.ainvoke(initial_state, config)
+        except ModelUnavailableException as exc:
+            # 全部条款都没审成（model_gate 拦截）：这是「结论不可用」，不是内部错误。
+            # 单独映射错误码，前端与运维才能一眼看出该去查配额/密钥而不是查代码。
+            logger.error("run %s 全部条款未审成（%s）：%s", run_id, exc.code, exc)
+            await emitter.emit(
+                EventType.RUN_FAILED,
+                code=exc.code,
+                message=str(exc)[:500],
+                retryable=True,
+            )
+            return False
         except Exception as exc:  # 图执行异常转 run.failed，不污染事件流
             logger.exception("run %s graph failed", run_id)
             await emitter.emit(
@@ -441,6 +474,10 @@ async def _execute_run(
         # Stage 10：回写产物（带签名下载 URL）随 run.completed 下发；占位时缺省。
         artifact = _artifact_of(result)
         artifact_field = {"artifact": artifact} if artifact is not None else {}
+        # 部分条款没审成（模型不可用/输出不可解析）时的降级明细；全成功时不下发该字段，
+        # 让「没有这个字段」本身就是「本次没有未审条款」的明确信号。
+        degraded_detail = _degraded_detail_of(result)
+        detail_field = {"degraded_detail": degraded_detail} if degraded_detail else {}
         await emitter.emit(
             EventType.RUN_COMPLETED,
             usage={
@@ -449,12 +486,14 @@ async def _execute_run(
                 "cost_cny": float(getattr(budget, "spent_cost_cny", 0.0)),
             },
             findings_count=len(findings),
-            degraded=bool(result.get("degraded")),
+            # 有未审条款就必然降级：结论不完整这件事不能只体现在一个可选明细字段里。
+            degraded=bool(result.get("degraded")) or degraded_detail is not None,
             quality=_quality_of(result),
             incremental=_incremental_of(result),
             # Stage 12：明细随终态下发（已剔除 stale），Java 重放存储与工作台共用。
             findings=_findings_of(result),
             **artifact_field,
+            **detail_field,
         )
         await _persist_event_seq(registry, run_id, emitter)
         return True
