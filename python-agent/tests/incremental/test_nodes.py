@@ -48,7 +48,10 @@ from app.incremental.cache import (
 from app.incremental.diff import clause_fingerprint
 from app.render.service import active_findings as render_active_findings
 
-MODEL = "gpt-4o-mini"
+# 缓存键的 model 维度取自配置（diff.py 用 settings.llm_model），不是硬编码常量：
+# 这里必须跟着配置走，否则 .env 换了模型，预置的缓存键与节点算出来的键不一致，
+# 测试会「因为本机配了 qwen-plus」而红——那是测试耦合环境，不是缓存失效。
+MODEL = AgentSettings().llm_model
 
 
 def clause(clause_id: str, no: str, text: str, index: int = 0) -> Clause:

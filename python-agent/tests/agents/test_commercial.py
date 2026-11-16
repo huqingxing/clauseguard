@@ -59,7 +59,9 @@ def test_default_model_reads_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_settings_defaults_to_openai_compatible_endpoint() -> None:
-    settings = AgentSettings()
+    # 这条测的是「代码里的默认值」，不是「本机 .env 配了什么」——必须显式关掉 env_file，
+    # 否则开发机一填 CLAUSEGUARD_AGENT_LLM_BASE_URL（dashscope），这条就红，属于测试耦合环境。
+    settings = AgentSettings(_env_file=None)
     assert settings.llm_base_url == "https://api.openai.com/v1"
     assert settings.llm_temperature == 0.0
 

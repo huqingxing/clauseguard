@@ -45,7 +45,13 @@ clauseguard:
     base-url: http://localhost:8000
     # 下游 SSE 调用整体超时；超时才触发熔断计数
     connect-timeout: 5s
-    response-timeout: 30s
+    # 这个值不是「整轮审查最多跑多久」，而是 reactor-netty 的**两次网络读之间**的最长静默：
+    # 超了就判定下游不可达。实测单个专家节点在 qwen-plus 上要 24~92s，期间一条事件都不发，
+    # 30s 会在正常审查中途抛 ReadTimeoutException 并把 review 打成 FAILED
+    # （事件：run.failed / AGENT_UNAVAILABLE / retryable=true，但用户看到的是「审查失败」）。
+    # 因此放宽到 180s：仍能发现真死的下游（连不上是 connect-timeout 5s 的事），
+    # 真正的「卡死」由看门狗（clauseguard.review.watchdog）兜底，不靠这个超时。
+    response-timeout: 180s
   # 阶段 6：law.search 的数据来源。live 转发 Python 真实法条库（默认），mock 回落
   # 固定样例，仅用于无库/无密钥的离线演示。
   # 为什么不默认 mock：检索是旁路能力，Python 挂掉时客户端已降级为空 hits + WARN，
