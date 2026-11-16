@@ -63,9 +63,20 @@ export interface RunCompletedEvent {
 
 export interface InterruptItem {
   clause_id: string
-  risk_type: string
+  /**
+   * 旧版 event：一条 finding 一条 item，单值风险类型。
+   * 事件存储里还躺着这类历史快照，不能当它不存在。
+   */
+  risk_type?: string
+  /**
+   * 新版 event：同一条款的多条 finding 已在 Python 侧按 clause_id 聚合，
+   * 这里给出全部风险类型（保序去重）。
+   */
+  risk_types?: string[]
   risk: string
   suggestion: string
+  /** 聚合前的 finding 条数；旧版 event 没有这个字段。 */
+  findings_merged?: number
   clause_text: string
 }
 

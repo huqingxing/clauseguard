@@ -52,31 +52,69 @@ def build_interrupt_payload(
     contract_version: int,
     content_hash: str,
 ) -> dict[str, object]:
-    """构造 interrupt 事件的 payload：逐条款列出待审项 + 乐观锁基线（版本/哈希）。
+    """构造 interrupt 事件的 payload：逐**条款**列出待审项 + 乐观锁基线（版本/哈希）。
 
     payload 为开放对象（events.schema.json 中 Interrupt.payload 为 additionalProperties:true），
     前端与 Java 据此展示待审条款并做合同变更校验（contract_version/content_hash 不匹配即 409）。
     每项携带 clause_text（条款原文）作为「前措辞」基线，供 Java 审批记录的前后措辞留痕。
+
+    为什么必须按 clause_id 聚合：findings 的去重键是 (clause_id, risk_type)，一条条款被
+    付款风险 + 免责风险同时命中就是两条 finding。而审批人签的是「这一条条款我同意」，
+    不是「payment_risk 同意、disclaimer_risk 不同意」——审批的语义单位是条款。逐 finding
+    生成 items 会让同一条款在待审列表里出现两次，落库时（唯一键 review_id+clause_id）
+    被去重掉一条，造成「待审 N 条、生效 N-1 条」。
+
+    聚合不丢信息：被合并的 risk_type 全部保留在 risk_types 里，各 finding 的建议按顺序
+    编号拼成一段（① ② …），findings_merged 记录原始条数。审计时能看出「这一条决定
+    覆盖了两个不同性质的风险」，只是换了个承载方式。
     """
-    items = [
-        {
-            "clause_id": finding.clause_id,
-            "risk_type": finding.risk_type,
-            "risk": finding.risk_level,
-            "suggestion": finding.suggestion,
-            "clause_text": (
-                clauses_by_id[finding.clause_id].text
-                if finding.clause_id in clauses_by_id
-                else ""
-            ),
-        }
-        for finding in findings
-    ]
+    grouped: dict[str, list[Finding]] = {}
+    for finding in findings:
+        # dict 保插入序：待审顺序与 findings 顺序一致，前端不用再排。
+        grouped.setdefault(finding.clause_id, []).append(finding)
+
+    items = [build_item(clause_id, group, clauses_by_id) for clause_id, group in grouped.items()]
     return {
         "reason": REASON,
         "contract_version": contract_version,
         "content_hash": content_hash,
         "items": items,
+    }
+
+
+# 风险档从低到高；求「取最高」时用它比大小，不依赖字符串顺序。
+# unverified 是引用校验降级值，低于 low：它不该抬高整条条款的档位。
+RISK_RANK = {"unverified": 0, "low": 1, "medium": 2, "high": 3}
+
+# 合并多段建议时的编号；超出 20 段退化为 (n)，不为了凑符号去引第三方库。
+_CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+
+
+def build_item(
+    clause_id: str, group: list[Finding], clauses_by_id: dict[str, Clause]
+) -> dict[str, object]:
+    """把同一 clause_id 的若干 finding 压成一条待审项。"""
+    risk = max(group, key=lambda f: RISK_RANK.get(f.risk_level, 0)).risk_level
+    # 保序去重：两个专家报同一个 risk_type 时只列一次，但不打乱首个出现的位置。
+    risk_types = list(dict.fromkeys(f.risk_type for f in group))
+
+    suggestions = [f.suggestion.strip() for f in group if f.suggestion and f.suggestion.strip()]
+    if len(suggestions) <= 1:
+        # 单段建议不加编号：一张卡片上孤零零一个「①」会让审阅者以为漏了后半段。
+        suggestion = suggestions[0] if suggestions else ""
+    else:
+        suggestion = "\n".join(
+            f"{_CIRCLED[i] if i < len(_CIRCLED) else f'({i + 1})'} {text}"
+            for i, text in enumerate(suggestions)
+        )
+
+    return {
+        "clause_id": clause_id,
+        "risk": risk,
+        "risk_types": risk_types,
+        "suggestion": suggestion,
+        "findings_merged": len(group),
+        "clause_text": clauses_by_id[clause_id].text if clause_id in clauses_by_id else "",
     }
 
 

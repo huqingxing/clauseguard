@@ -1,0 +1,74 @@
+# schema 门禁：在一个**空** MySQL 上从零跑完所有迁移。
+#
+# 为什么单独一个 job：本地的 FlywayMigrationTest 只能校验「现有库是否落后于代码」
+# （库账号只有 clauseguard.* 权限，建不了独立 schema；在业务库上 clean 等于删数据）。
+# 它挡得住「迁移没跑」，挡不住「迁移在空库上根本跑不起来」——依赖已有数据、
+# 索引名冲突、DDL 顺序错误，这些在已经建好的库上全都是绿的。
+# CI 有 Docker，能在干净实例上把这条路径走一遍。
+#
+# 为什么用 flyway-maven-plugin 而不是让应用启动时跑：这里要的是「迁移本身」，
+# 不需要 Spring 上下文、不需要 Redis、不需要模型 key。跑得越少，失败原因越确定。
+name: schema
+
+on:
+  push:
+    paths:
+      - "java-service/src/main/resources/db/migration/**"
+      - "java-service/src/test/java/com/clauseguard/migration/**"
+      - ".github/workflows/schema.yml"
+  pull_request:
+    paths:
+      - "java-service/src/main/resources/db/migration/**"
+      - "java-service/src/test/java/com/clauseguard/migration/**"
+      - ".github/workflows/schema.yml"
+
+jobs:
+  fresh-migrate:
+    runs-on: ubuntu-latest
+    # 空实例：只建库名，不建任何表。迁移必须自己把 schema 长出来。
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: fresh
+        ports:
+          - 3306:3306
+        # 不等到 healthy 就开跑，第一个迁移会因连接被拒而失败——那是假失败。
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      # allowPublicKeyRetrieval + useSSL=false：MySQL 8 默认 caching_sha2_password，
+      # 不带的 JDBC 连接会以「Public Key Retrieval is not allowed」失败。
+      - name: Migrate into an empty schema
+        working-directory: java-service
+        run: |
+          mvn -B org.flywaydb:flyway-maven-plugin:11.7.2:migrate \
+            -Dflyway.url="jdbc:mysql://127.0.0.1:3306/fresh?allowPublicKeyRetrieval=true&useSSL=false" \
+            -Dflyway.user=root \
+            -Dflyway.password=root \
+            -Dflyway.locations=filesystem:src/main/resources/db/migration
+
+      # 迁移跑完立刻用同一套断言复核：pending 为空 + 关键索引/约束存在 + 唯一约束真的拒绝重复。
+      # 这一步顺带证明「测试在空库上也成立」，而不是只对本地那个库成立。
+      # 参数走 env 而不是 -D：mvn 的 user properties 是否传给 fork 出来的测试 JVM 依赖
+      # surefire 行为，env 没有这个不确定性。
+      - name: Verify schema with FlywayMigrationTest against the fresh schema
+        working-directory: java-service
+        env:
+          CLAUSEGUARD_TEST_DB_URL: "jdbc:mysql://127.0.0.1:3306/fresh?allowPublicKeyRetrieval=true&useSSL=false"
+          CLAUSEGUARD_TEST_DB_USER: root
+          CLAUSEGUARD_TEST_DB_PASSWORD: root
+        run: mvn -B -Dtest=FlywayMigrationTest test

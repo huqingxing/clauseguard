@@ -27,11 +27,19 @@ interface Draft {
   edited_text: string
 }
 
-/** 一条条款可能被多个专家各报一次（如付款风险 + 违约风险），审批却是「按条款拍板」。 */
+/**
+ * 一条待审条款。Python 侧已按 clause_id 聚合过 finding，所以这里通常一条 item 一张卡片；
+ * 但事件存储里可能还有旧版快照（一条 finding 一条 item），仍要能读，否则历史审批链接打不开。
+ */
 interface PendingGroup {
   clause_id: string
   clause_text: string
-  risks: Array<{ risk_type: string; risk: string; suggestion: string }>
+  risk: string
+  risk_types: string[]
+  /** 原始建议段，渲染时再决定要不要编号拼接。 */
+  suggestions: string[]
+  /** 聚合前的 finding 条数，用于提示「这条决定覆盖了几个风险点」。 */
+  findings: number
 }
 
 const drafts = reactive<Record<string, Draft>>({})
@@ -60,26 +68,54 @@ let staleTimer: ReturnType<typeof setTimeout> | null = null
 const phase = ref<'loading' | 'pending' | 'done' | 'failed' | 'submitted' | 'stale'>('loading')
 const failure = ref('')
 
+/** 多段建议合并时的编号；与 Python 侧同一套符号，避免同一条款在两端长得不一样。 */
+const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'
+
+function riskTypesOf(item: InterruptItem): string[] {
+  if (item.risk_types?.length) return [...item.risk_types]
+  return item.risk_type ? [item.risk_type] : []
+}
+
 /**
  * 按 clause_id 归并：契约里 ApproveRequest 的主键是 clause_id（乐观锁也按条款比对），
  * 不归并会出现「同一条款卡片渲染两次、却只能落一条草稿」的错位。
+ *
+ * 新版 payload 每条 clause 只有一条 item（聚合在 Python 做完了），归并等于空转；
+ * 保留归并是为了旧版快照——那时一条 finding 一条 item，同一条款会来两条。
  */
 function groupItems(raw: InterruptItem[]): PendingGroup[] {
   const map = new Map<string, PendingGroup>()
   for (const item of raw) {
+    const text = item.suggestion?.trim() ?? ''
     const existing = map.get(item.clause_id)
-    if (existing) {
-      existing.risks.push({ risk_type: item.risk_type, risk: item.risk, suggestion: item.suggestion })
-      if (!existing.clause_text && item.clause_text) existing.clause_text = item.clause_text
-    } else {
+    if (!existing) {
       map.set(item.clause_id, {
         clause_id: item.clause_id,
         clause_text: item.clause_text,
-        risks: [{ risk_type: item.risk_type, risk: item.risk, suggestion: item.suggestion }],
+        risk: item.risk,
+        risk_types: riskTypesOf(item),
+        suggestions: text ? [text] : [],
+        findings: item.findings_merged ?? 1,
       })
+      continue
     }
+    for (const type of riskTypesOf(item)) {
+      if (!existing.risk_types.includes(type)) existing.risk_types.push(type)
+    }
+    if (text && !existing.suggestions.includes(text)) existing.suggestions.push(text)
+    if (!existing.clause_text && item.clause_text) existing.clause_text = item.clause_text
+    // 新格式自带条数（一条 item 代表 N 条 finding），旧格式每条算一条。
+    existing.findings += item.findings_merged ?? 1
   }
   return Array.from(map.values())
+}
+
+/** 单段建议原样返回：一张卡片上孤零零一个「①」会让人以为漏了后半段。 */
+function suggestionOf(item: PendingGroup): string {
+  if (item.suggestions.length <= 1) return item.suggestions[0] ?? ''
+  return item.suggestions
+    .map((text, i) => `${CIRCLED[i] ?? `(${i + 1})`} ${text}`)
+    .join('\n')
 }
 
 const decidedCount = computed(
@@ -282,20 +318,30 @@ onBeforeUnmount(() => {
         <header class="card-head">
           <span class="index">{{ index + 1 }}</span>
           <el-tag :type="RISK_TAG_TYPE.high" size="small" effect="dark">高风险</el-tag>
-          <el-text v-if="item.risks.length > 1" type="info" size="small">
-            {{ item.risks.length }} 个风险点
+          <el-text v-if="item.findings > 1" type="info" size="small">
+            {{ item.findings }} 个风险点
           </el-text>
           <span class="clause-id">{{ item.clause_id }}</span>
         </header>
 
         <p class="clause-text">{{ item.clause_text }}</p>
 
-        <div v-for="risk in item.risks" :key="risk.risk_type" class="risk-block">
-          <p class="risk"><span class="label">{{ risk.risk_type }}</span>{{ risk.risk }}</p>
-          <p v-if="risk.suggestion" class="suggestion">
-            <span class="label suggest">对策</span>{{ risk.suggestion }}
-          </p>
+        <!-- 风险类型全部列出：聚合不能把信息吃掉，否则审计时看不出这条决定覆盖了几类问题。 -->
+        <div class="risk-types">
+          <el-tag
+            v-for="type in item.risk_types"
+            :key="type"
+            size="small"
+            type="danger"
+            effect="plain"
+          >
+            {{ type }}
+          </el-tag>
         </div>
+
+        <p v-if="suggestionOf(item)" class="suggestion">
+          <span class="label suggest">对策</span>{{ suggestionOf(item) }}
+        </p>
 
         <el-radio-group v-model="drafts[item.clause_id].decision" size="small" class="decisions">
           <el-radio-button value="approve">通过</el-radio-button>
@@ -405,10 +451,12 @@ onBeforeUnmount(() => {
   color: var(--el-text-color-placeholder);
 }
 
-.risk-block {
-  padding-left: 2px;
-  border-left: 2px solid var(--el-color-danger-light-7);
-  margin-bottom: 6px;
+/* 风险类型标签：一条卡片可能挂多个，窄屏要能折行而不是溢出。 */
+.risk-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .clause-text {
@@ -422,12 +470,13 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
-.risk,
+/* pre-line：合并后的建议是用 \n 拼的 ①②…，CSS 不认换行符就当一整行糊在一起。 */
 .suggestion {
   margin: 0 0 6px;
   font-size: 12px;
   line-height: 1.6;
   color: var(--el-text-color-regular);
+  white-space: pre-line;
 }
 
 .label {

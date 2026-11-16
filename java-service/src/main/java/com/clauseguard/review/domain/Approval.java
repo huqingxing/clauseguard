@@ -54,6 +54,15 @@ public class Approval {
     @Column(name = "risk", length = 32)
     private String risk;
 
+    /**
+     * 这条决定覆盖的风险类型，逗号分隔（如 {@code payment_risk,disclaimer_risk}）。
+     *
+     * <p>待审项按 clause 聚合后，一条决定可能同时覆盖多个风险维度；只留 risk（档位）
+     * 会让审计里看不出「法务到底审了几类问题」。可空：V8 之前的历史记录没有这个信息。
+     */
+    @Column(name = "risk_types", length = 255)
+    private String riskTypes;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -130,6 +139,14 @@ public class Approval {
 
     public void setRisk(String risk) {
         this.risk = risk;
+    }
+
+    public String getRiskTypes() {
+        return riskTypes;
+    }
+
+    public void setRiskTypes(String riskTypes) {
+        this.riskTypes = riskTypes;
     }
 
     public Instant getCreatedAt() {

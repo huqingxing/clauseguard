@@ -46,14 +46,16 @@ class FlywayMigrationTest {
                     "CLAUSEGUARD_TEST_DB_URL",
                     "jdbc:mysql://localhost:3306/clauseguard"
                             + "?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai"));
-    private static final String USER = System.getProperty(
-            "clauseguard.test.db.user",
-            System.getenv().getOrDefault("MYSQL_USER", "clauseguard"));
-    private static final String PASSWORD = System.getProperty(
-            "clauseguard.test.db.password",
-            System.getenv().getOrDefault("MYSQL_PASSWORD", "clauseguard"));
+    // 优先环境变量：CI 里用 env 传参最确定——mvn -D 的 user properties 是否传给 fork 出来的
+    // 测试 JVM 依赖 surefire 版本行为，env 没有这个不确定性。
+    private static final String USER = System.getenv().getOrDefault(
+            "CLAUSEGUARD_TEST_DB_USER",
+            System.getProperty("clauseguard.test.db.user", "clauseguard"));
+    private static final String PASSWORD = System.getenv().getOrDefault(
+            "CLAUSEGUARD_TEST_DB_PASSWORD",
+            System.getProperty("clauseguard.test.db.password", "clauseguard"));
 
-    /** V1~V7 建出来的关键对象，少任何一个都说明迁移没跑完或被人手工改过。 */
+    /** V1~V8 建出来的关键对象，少任何一个都说明迁移没跑完或被人手工改过。 */
     private static final List<String> REQUIRED_INDEXES = List.of(
             "idx_review_event_review_seq",   // V1
             "idx_approval_review",           // V1
@@ -91,6 +93,22 @@ class FlywayMigrationTest {
         }
         // 只断言「该有的都在」，不禁止多出来的：手工加的临时索引不该让这里变红。
         assertThat(actual).containsAll(REQUIRED_INDEXES);
+    }
+
+    @Test
+    void approvalCarriesRiskTypesColumn() throws Exception {
+        assumeReachable();
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "SELECT COUNT(*) FROM information_schema.COLUMNS "
+                             + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'approval' "
+                             + "AND COLUMN_NAME = 'risk_types'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                // 没有这列，聚合后的审批记录就只剩一个 risk 档位，审计里看不出覆盖了几类风险。
+                assertThat(rs.getInt(1)).as("V8 的 risk_types 列不存在").isEqualTo(1);
+            }
+        }
     }
 
     @Test

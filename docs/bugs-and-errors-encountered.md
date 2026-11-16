@@ -25,7 +25,7 @@
 | 13 | 加固 | `ContractController` 直接注入 `ReviewRepository` | 跨模块越过 Service 层直接读别人的仓储 | 下沉为 `ReviewService.latestReview/latestReviews` |
 | 14 | 加固 | 同一 review 的同一 clause 出现两条审批记录 | `approval` 只有 `(review_id)` 普通索引；状态 CAS 只管 review 状态，管不到请求体里的重复 clause | `V7` 加 `uk_approval_review_clause` + 写前判重 + 事务外捕获冲突当幂等 |
 | 15 | 运维 | `flyway_schema_history` 停在 v5，V6 的索引在库里根本不存在 | 测试要么不连库、要么显式关 Flyway，迁移从未被真实执行过 | 用 flyway-maven-plugin 对本地库实跑 `migrate`，v5 → v7 |
-| 16 | 设计 | 审批提交 21 条，只落 17 条 | 上游 `build_interrupt_payload` 按 finding 生成 items，一个 clause 被两个风险维度命中就出两条 | Java 侧去重保住约束（待定：Python 侧聚合） |
+| 16 | 设计 | 审批提交 21 条，只落 17 条 | 上游 `build_interrupt_payload` 按 finding 生成 items，一个 clause 被两个风险维度命中就出两条 | `build_interrupt_payload` 按 clause_id 聚合 + `V8` 加 `risk_types` 列 + 前端兼容两代事件 |
 
 ---
 
@@ -132,6 +132,7 @@
 - **根因**：全量测试里的 `@SpringBootTest` 要么是 Web 切片（不加载数据源），要么仓储全是 `@Mock`；唯一真正连库的集成测试又显式 `spring.flyway.enabled=false`。于是「迁移能不能应用」从来没被任何一次测试验证过——**测试全绿 ≠ 迁移能跑**。
 - **修复**：分两步。第一步把本地库补到 v7（flyway-maven-plugin 实跑 `migrate`，v5 → v7），逐个 `SHOW INDEX` 核对；第二步**让迁移进测试**——新增 `FlywayMigrationTest`：`flyway.validate()` 查 checksum、`info().pending()` 必须为空、`information_schema.STATISTICS` 断言 V1/V6/V7 的五个索引都在、再往 `approval` 插一对重复 `(review_id, clause_id)` 断言被约束拒绝（事务内插完回滚，不在审计表留痕）。
 - **为什么不 clean + 从零重建**：库账号只有 `clauseguard.*` 权限，建不了独立 schema；在业务库上 clean 等于把开发数据全删。对「迁移没跑」这个失败模式，**校验 pending 比从头建库更直接**，且零破坏。
+- **空库那条路径交给 CI**：本地权限限制是客观事实，但「迁移在空库上能不能跑起来」不能就这么漏着——某条迁移依赖已有数据、索引名冲突、DDL 顺序错误，在已建好的库上全是绿的。`.github/workflows/schema.yml` 用 `mysql:8` service 起一个只有库名、没有任何表的实例，从零 `migrate`，再用同一套 `FlywayMigrationTest` 断言一次。
 - **为什么命名 `*Test` 而不是 `*IT`**：surefire 默认只收 `*Test`，叫 IT 就得再引 failsafe，而「默认不跑」正是这类测试最怕的状态。
 - **反证**：临时塞一个 `V99__probe.sql` 进去，`FlywayMigrationTest` 立刻红（`Migrations have failed validation`）；删掉恢复绿。**一个永远绿的测试等于没有测试。**
 - **关键点**：迁移的正确性只能靠「真库跑一遍」证明。把 `migrate` 当成发布流程里的独立一步，不要假设「应用一启动就自动好了」——启动失败时 Flyway 往往不是第一个报错的组件，很容易被别的错误盖住。
@@ -139,8 +140,11 @@
 ### 🐞 16. 设计 — 待审项里同一个 clause 出现两次（上一轮 4 组重复的真根因）
 - **现象**：拿一份 AWAITING_APPROVAL 的 review 实跑审批，21 条待审项提交后只落了 **17** 条。
 - **根因**：`human_approval.build_interrupt_payload` 按 **finding** 逐条生成 `items`，而一条条款可能被多个风险维度同时命中——实测 4 个 clause 各出现两次，且两次的 `risk_type` 与 `suggestion` 完全不同（`payment_risk` + `disclaimer_risk`、`delivery_risk` + `breach_risk`…）。所以「同一 clause 两条审批记录」不是用户连点两次，是**上游 payload 本来就有重复**。
-- **影响**：Java 侧按 clause 去重保住了唯一约束，但代价是——如果用户对同组第二条改过措辞，那个编辑会被静默丢弃（保留第一条）。前端展示 21 条、实际生效 17 条，对不上。
-- **待定方案**：① Python 侧在 `build_interrupt_payload` 里按 clause_id 聚合（risk 取最高、suggestion 合并），让「待审数量 = 落库数量」；② Java 侧把唯一键改成 `(review_id, clause_id, risk_type)` 保留 21 条——但这样同一条款可能拿到两个互相矛盾的决定，语义更乱。倾向 ①。
+- **修法**：在 `build_interrupt_payload` 里按 `clause_id` 聚合。**不是**把唯一键改成 `(review_id, clause_id, risk_type)`——那样同一条款会拿到两个互相矛盾的决定，事后无法回答「法务到底批没批第 4.3 条」，是逻辑错误而不只是麻烦。
+- **聚合不能丢信息**：被合并的 `risk_type` 全部进 `risk_types` 数组，各 finding 的建议按顺序编号拼成一段（`① … ② …`），`findings_merged` 记录原始条数。单段建议不加编号——卡片上孤零零一个「①」会让人以为漏了后半段。
+- **配套落库**：`V8` 给 `approval` 加 `risk_types` 列（逗号分隔）。只把 `risk`（档位）写进审批记录的话，一条覆盖两个风险的决定在审计里看不出「审了几类问题」——信息留在了 payload 里，等于没留。
+- **前端兼容两代事件**：`InterruptItem.risk_type` 改为可选，新增 `risk_types` / `findings_merged`；`groupItems` 先按 clause 归并再渲染，旧版「一条 finding 一条 item」的快照仍能打开历史审批链接。
+- **粒度认知（面试可讲）**：审批的**业务粒度**是条款（人只对条款表态），**数据粒度**是 finding（`(clause_id, risk_type)` 去重键）。当前唯一键建在条款上是对的，因为演示里是整条通过；若业务将来要「这个风险同意、那个不同意」，唯一键才该挪到 finding 上，UI 继续按条款分组。
 
 
 ---
@@ -159,6 +163,8 @@
 11. **迁移文件存在 ≠ 数据库已迁移**：所有测试都不连真库时，"schema 有变更"只是一句仓库里的话。发布前必须独立跑一次 `migrate` 并核对实际索引。
 12. **测试要先证明自己能红**：新加的校验测试，故意造一次违规看它是否报警；永远绿的测试只是安慰剂。
 13. **去重会掩盖上游的重复**：下游按业务键去重（保住唯一约束）之后，多余数据的来源就不再有症状了。该顺手往上追一层——这次的「重复审批」根因根本不在审批接口，在生成待审项的地方。
+14. **一个约束只能挡住一个方向**：`(review_id, clause_id)` 唯一约束挡住的是「重复写入」，挡不住「待审列表里同一条款出现两次」。后者是数据建模问题，得往上改生成逻辑，不是加约束能解决的。
+15. **业务粒度 ≠ 数据粒度**：审批人表态的单位是条款，finding 的去重键却细到 `(clause_id, risk_type)`。两层的粒度差异必须在「生成待审项」这一步收敛掉，否则差异会一路传导到唯一约束上，变成一个假 bug。
 
 ## 四、提交记录（对应修复）
 - `dd7e8f2` 阶段 13（含看门狗 Repository 方法预置）

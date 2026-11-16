@@ -439,6 +439,52 @@ class ReviewServiceTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    // ---- 聚合后的待审项：一条决定覆盖多个风险类型时必须留痕 ----
+
+    @Test
+    void approveStoresAllRiskTypesOfAMergedClause() {
+        Review review = awaitingReview("r-merged");
+        // 新版 payload：一条条款聚合了两个风险维度。
+        review.setPendingPayload("{\"reason\":\"high_risk_pending_approval\",\"contract_version\":1,"
+                + "\"content_hash\":\"hash-1\",\"items\":[{\"clause_id\":\"c1\",\"risk\":\"high\","
+                + "\"risk_types\":[\"payment_risk\",\"disclaimer_risk\"],"
+                + "\"suggestion\":\"①缩短账期\\n②删除免责\",\"findings_merged\":2,"
+                + "\"clause_text\":\"4.3 付款条款\"}]}");
+        when(reviewRepository.findById("r-merged")).thenReturn(Optional.of(review));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
+        when(approvalRepository.save(any(Approval.class))).thenAnswer(i -> i.getArgument(0));
+        doReturn(Flux.empty()).when(agentClient).streamResume(eq("run-abc"), any(), anyString());
+
+        service.approveReview("r-merged", List.of(approveOf("c1")), "alice");
+
+        ArgumentCaptor<Approval> cap = ArgumentCaptor.forClass(Approval.class);
+        verify(approvalRepository).save(cap.capture());
+        // 只存档位会让审计看不出这条决定审了两类问题，所以 risk_types 必须一起落库。
+        assertThat(cap.getValue().getRiskTypes()).isEqualTo("payment_risk,disclaimer_risk");
+        assertThat(cap.getValue().getRisk()).isEqualTo("high");
+    }
+
+    @Test
+    void approveToleratesLegacyPayloadWithoutRiskTypes() {
+        Review review = awaitingReview("r-legacy");
+        // 旧版 payload（事件存储里还留着）：只有单值 risk_type，没有 risk_types 数组。
+        review.setPendingPayload("{\"reason\":\"high_risk_pending_approval\",\"contract_version\":1,"
+                + "\"content_hash\":\"hash-1\",\"items\":[{\"clause_id\":\"c1\",\"risk\":\"high\","
+                + "\"risk_type\":\"payment_risk\",\"clause_text\":\"旧原文\"}]}");
+        when(reviewRepository.findById("r-legacy")).thenReturn(Optional.of(review));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
+        when(approvalRepository.save(any(Approval.class))).thenAnswer(i -> i.getArgument(0));
+        doReturn(Flux.empty()).when(agentClient).streamResume(eq("run-abc"), any(), anyString());
+
+        service.approveReview("r-legacy", List.of(approveOf("c1")), "alice");
+
+        ArgumentCaptor<Approval> cap = ArgumentCaptor.forClass(Approval.class);
+        verify(approvalRepository).save(cap.capture());
+        // 历史中断快照不能因为缺字段就写入假数据；null 就是「那个年代没有这项记录」。
+        assertThat(cap.getValue().getRiskTypes()).isNull();
+        assertThat(cap.getValue().getBeforeWording()).isEqualTo("旧原文");
+    }
+
     private static Review awaitingReview(String id) {
         Review review = new Review();
         review.setId(id);

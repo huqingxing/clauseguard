@@ -105,6 +105,9 @@ public class ApprovalApplier {
             if (item != null) {
                 approval.setBeforeWording(textOrNull(item.path("clause_text")));
                 approval.setRisk(textOrNull(item.path("risk")));
+                // 聚合后一条待审项可能覆盖多个风险维度（payment_risk + disclaimer_risk）：
+                // 只存档位会让审计里看不出这条决定审了几类问题。
+                approval.setRiskTypes(joinRiskTypes(item.path("risk_types")));
             }
             approval.setAfterWording(req.getEditedText());
             approvalRepository.save(approval);
@@ -112,6 +115,27 @@ public class ApprovalApplier {
         // 状态已由抢占语句改成 RUNNING，这里只取 run_id 返回，不再重复 save：
         // 恢复后由 run.completed 事件置 COMPLETED。
         return review.getRunId();
+    }
+
+    /**
+     * risk_types 数组压成逗号分隔串；缺字段（旧事件）或空数组返回 null，不编造。
+     */
+    private static String joinRiskTypes(JsonNode node) {
+        if (node == null || !node.isArray() || node.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (JsonNode type : node) {
+            String value = type.asText();
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+            sb.append(value);
+        }
+        return sb.length() == 0 ? null : sb.toString();
     }
 
     private static String textOrNull(JsonNode node) {
