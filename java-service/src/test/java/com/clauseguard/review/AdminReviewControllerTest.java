@@ -130,6 +130,24 @@ class AdminReviewControllerTest {
                 .andExpect(jsonPath("$.code").value("CONTRACT_CHANGED"));
     }
 
+    /**
+     * 快照损坏 → 422，不能是 409。
+     *
+     * <p>409 会让前端弹出「合同已被修改，请刷新后重试」，把用户推向重试；而这条路径重试一百次
+     * 也是同一个结果——错的是数据，不是并发。码混了，排查方向就被带偏了。
+     */
+    @Test
+    void approveReturns422WhenSnapshotIsCorrupt() throws Exception {
+        doThrow(new ApprovalPayloadInvalidException("r", "items 缺失或为空"))
+                .when(reviewService).approveReview(any(), any(), anyString());
+
+        mockMvc.perform(approveAs("admin", "admin123"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("APPROVAL_PAYLOAD_INVALID"))
+                // 对外文案固定，不把 JSON 第几行、clause_id 之类的现场细节写进响应体。
+                .andExpect(jsonPath("$.message").value(containsString("请重新发起审查")));
+    }
+
     @Test
     void approveReturns404WhenReviewNotFound() throws Exception {
         when(reviewService.approveReview(any(), any(), anyString()))

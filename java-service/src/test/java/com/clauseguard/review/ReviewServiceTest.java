@@ -485,6 +485,66 @@ class ReviewServiceTest {
         assertThat(cap.getValue().getBeforeWording()).isEqualTo("旧原文");
     }
 
+    // ---- 快照不可用：fail-closed —— 宁可批不了，也不写一条「已通过但不知批了什么」的记录 ----
+
+    @Test
+    void approveRejectsCorruptPayloadInsteadOfWritingNullTrace() {
+        Review review = awaitingReview("r-corrupt");
+        // 截断的 JSON：正是 payload 里出现裸换行/转义坏掉之后的样子。
+        review.setPendingPayload(
+                "{\"reason\":\"high_risk_pending_approval\",\"items\":[{\"clause_id\":\"c1\"");
+        when(reviewRepository.findById("r-corrupt")).thenReturn(Optional.of(review));
+
+        assertThatThrownBy(() -> service.approveReview("r-corrupt", List.of(approveOf("c1")), "alice"))
+                .isInstanceOf(ApprovalPayloadInvalidException.class);
+
+        // 解析发生在抢占之前：状态不该被改，更不该有审批落库或 resume。
+        verify(reviewRepository, never()).markStatusIfCurrent(anyString(), anyString(), anyString());
+        verify(approvalRepository, never()).save(any(Approval.class));
+        verify(agentClient, never()).streamResume(anyString(), any(), anyString());
+    }
+
+    @Test
+    void approveRejectsNonEmptyPayloadWithoutItems() {
+        Review review = awaitingReview("r-noitems");
+        // 合法 JSON 但结构变了：不能当「没有待审项」放行，否则写出来的审批全无留痕。
+        review.setPendingPayload("{\"reason\":\"high_risk_pending_approval\"}");
+        when(reviewRepository.findById("r-noitems")).thenReturn(Optional.of(review));
+
+        assertThatThrownBy(() -> service.approveReview("r-noitems", List.of(approveOf("c1")), "alice"))
+                .isInstanceOf(ApprovalPayloadInvalidException.class);
+
+        verify(approvalRepository, never()).save(any(Approval.class));
+    }
+
+    @Test
+    void approveRejectsClauseThatIsNotInTheSnapshot() {
+        Review review = awaitingReview("r-extra"); // 快照里只有 c1
+        when(reviewRepository.findById("r-extra")).thenReturn(Optional.of(review));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
+
+        assertThatThrownBy(() -> service.approveReview("r-extra", List.of(approveOf("c9")), "alice"))
+                .isInstanceOf(ApprovalPayloadInvalidException.class);
+
+        // 没有快照依据就没有前措辞和风险档：整单拒绝，不是「留几个 null 凑合写进去」。
+        verify(approvalRepository, never()).save(any(Approval.class));
+        verify(agentClient, never()).streamResume(anyString(), any(), anyString());
+    }
+
+    @Test
+    void approveRejectsSnapshotItemWithoutRisk() {
+        Review review = awaitingReview("r-norisk");
+        review.setPendingPayload("{\"reason\":\"x\",\"items\":["
+                + "{\"clause_id\":\"c1\",\"clause_text\":\"原文一\"}]}");
+        when(reviewRepository.findById("r-norisk")).thenReturn(Optional.of(review));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
+
+        assertThatThrownBy(() -> service.approveReview("r-norisk", List.of(approveOf("c1")), "alice"))
+                .isInstanceOf(ApprovalPayloadInvalidException.class);
+
+        verify(approvalRepository, never()).save(any(Approval.class));
+    }
+
     private static Review awaitingReview(String id) {
         Review review = new Review();
         review.setId(id);
@@ -492,6 +552,11 @@ class ReviewServiceTest {
         review.setContractVersion("1");
         review.setContentHash("hash-1");
         review.setRunId("run-abc");
+        // 待审快照：AWAITING_APPROVAL 的 review 一定带快照。没有快照的话审批会被判为
+        // 「没有依据」而拒绝（见快照 fail-closed 那几条用例）——这里是正常路径的基线。
+        review.setPendingPayload("{\"reason\":\"high_risk_pending_approval\",\"contract_version\":1,"
+                + "\"content_hash\":\"hash-1\",\"items\":[{\"clause_id\":\"c1\",\"risk\":\"high\","
+                + "\"risk_types\":[\"payment_risk\"],\"clause_text\":\"原文一\"}]}");
         return review;
     }
 

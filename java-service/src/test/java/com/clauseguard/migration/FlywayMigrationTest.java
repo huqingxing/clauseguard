@@ -55,7 +55,7 @@ class FlywayMigrationTest {
             "CLAUSEGUARD_TEST_DB_PASSWORD",
             System.getProperty("clauseguard.test.db.password", "clauseguard"));
 
-    /** V1~V8 建出来的关键对象，少任何一个都说明迁移没跑完或被人手工改过。 */
+    /** V1~V9 建出来的关键对象，少任何一个都说明迁移没跑完或被人手工改过。 */
     private static final List<String> REQUIRED_INDEXES = List.of(
             "idx_review_event_review_seq",   // V1
             "idx_approval_review",           // V1
@@ -112,13 +112,30 @@ class FlywayMigrationTest {
     }
 
     @Test
+    void approvalRiskIsNotNullBecauseAnApprovalWithoutRiskIsNotAnAuditRecord() throws Exception {
+        assumeReachable();
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "SELECT IS_NULLABLE FROM information_schema.COLUMNS "
+                             + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'approval' "
+                             + "AND COLUMN_NAME = 'risk'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                assertThat(rs.next()).as("approval.risk 列不存在").isTrue();
+                // V9：没有 risk 的审批记录在合规意义上等于没批过，数据库层不许留这个口子。
+                assertThat(rs.getString(1)).as("V9 没生效：risk 仍可为空").isEqualTo("NO");
+            }
+        }
+    }
+
+    @Test
     void uniqueConstraintActuallyRejectsDuplicateApproval() throws Exception {
         assumeReachable();
         try (Connection c = connect()) {
             c.setAutoCommit(false);
             String reviewId = "migration-test-" + System.nanoTime();
             try (PreparedStatement ps = c.prepareStatement(
-                    "INSERT INTO approval (review_id, clause_id, decision, operator) VALUES (?,?,?,?)")) {
+                    "INSERT INTO approval (review_id, clause_id, decision, operator, risk)"
+                            + " VALUES (?,?,?,?,?)")) {
                 insert(ps, reviewId, "c1");
                 // 同 (review_id, clause_id) 再来一条：约束必须拒绝，否则 V7 形同没加。
                 assertThatThrownBy(() -> insert(ps, reviewId, "c1"))
@@ -137,6 +154,8 @@ class FlywayMigrationTest {
         ps.setString(2, clauseId);
         ps.setString(3, "approve");
         ps.setString(4, "migration-test");
+        // V9 之后 risk 是 NOT NULL：测试数据也必须带依据，否则测的分明是「非空校验」而不是唯一约束。
+        ps.setString(5, "high");
         ps.executeUpdate();
     }
 

@@ -438,7 +438,7 @@ public class ReviewService {
         // 快照解析留在 Service：它只依赖 ObjectMapper，不需要进事务。
         Review snapshot = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ReviewNotFoundException(reviewId));
-        Map<String, JsonNode> pendingByClause = parsePendingItems(snapshot.getPendingPayload());
+        Map<String, JsonNode> pendingByClause = parsePendingItems(reviewId, snapshot.getPendingPayload());
 
         // 抢占 + 乐观锁 + 落库 + 切状态的原子段：并发下只有一个请求能通过。
         String runId;
@@ -523,24 +523,47 @@ public class ReviewService {
         }
     }
 
-    private Map<String, JsonNode> parsePendingItems(String pendingPayload) {
+    /**
+     * 解析中断快照里的待审项，失败即拒绝（fail-closed），不返回空 map 蒙混过去。
+     *
+     * <p>修复前这里是一个 {@code catch (Exception) { return Map.of(); }}：把「本来就没有待审项」
+     * 和「payload 坏了」混成同一种结果。后果不是报错，而是审批照样 200 成功、risk 与
+     * before_wording 全写 NULL —— 一条没有依据的审批记录躺在审计表里，看上去还「已通过」。
+     *
+     * <p>空 payload 仍然放行：它代表「这份 review 没有中断快照」。真走到审批时，
+     * {@link ApprovalApplier} 会因为「快照里没有该条款」拒绝，不会写出空留痕的记录。
+     */
+    private Map<String, JsonNode> parsePendingItems(String reviewId, String pendingPayload) {
         Map<String, JsonNode> byClause = new HashMap<>();
         if (pendingPayload == null || pendingPayload.isBlank()) {
             return byClause;
         }
+        JsonNode node;
         try {
-            JsonNode node = mapper.readTree(pendingPayload);
-            JsonNode items = node.path("items");
-            if (items.isArray()) {
-                for (JsonNode item : items) {
-                    String clauseId = textOrNull(item.path("clause_id"));
-                    if (clauseId != null) {
-                        byClause.put(clauseId, item);
-                    }
-                }
+            node = mapper.readTree(pendingPayload);
+        } catch (JsonProcessingException e) {
+            // 不在这里打日志：异常带着 reviewId 和原始报错，统一由 GlobalExceptionHandler 落一条，
+            // 否则同一次拒绝会在日志里出现两行（一行解析、一行映射），查起来反而乱。
+            throw new ApprovalPayloadInvalidException(reviewId,
+                    "pending_payload 非法 JSON（长度 " + pendingPayload.length() + "）: "
+                            + e.getOriginalMessage());
+        }
+        JsonNode items = node.path("items");
+        // 结构变了（缺 items、items 不是数组）和「解析出 0 条但 payload 非空」同样危险：
+        // 继续往下走就是「静默降级」，所以这里和解析失败一样直接拒绝。
+        if (!items.isArray() || items.isEmpty()) {
+            throw new ApprovalPayloadInvalidException(
+                    reviewId, "items 缺失或为空（payload 长度 " + pendingPayload.length() + "）");
+        }
+        for (JsonNode item : items) {
+            String clauseId = textOrNull(item.path("clause_id"));
+            if (clauseId != null && !clauseId.isBlank()) {
+                byClause.put(clauseId, item);
             }
-        } catch (Exception e) {
-            logger.warn("parse pending_payload failed: {}", e.getMessage());
+        }
+        if (byClause.isEmpty()) {
+            throw new ApprovalPayloadInvalidException(
+                    reviewId, "items 里没有可用 clause_id（共 " + items.size() + " 条）");
         }
         return byClause;
     }

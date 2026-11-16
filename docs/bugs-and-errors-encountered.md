@@ -26,6 +26,7 @@
 | 14 | 加固 | 同一 review 的同一 clause 出现两条审批记录 | `approval` 只有 `(review_id)` 普通索引；状态 CAS 只管 review 状态，管不到请求体里的重复 clause | `V7` 加 `uk_approval_review_clause` + 写前判重 + 事务外捕获冲突当幂等 |
 | 15 | 运维 | `flyway_schema_history` 停在 v5，V6 的索引在库里根本不存在 | 测试要么不连库、要么显式关 Flyway，迁移从未被真实执行过 | 用 flyway-maven-plugin 对本地库实跑 `migrate`，v5 → v7 |
 | 16 | 设计 | 审批提交 21 条，只落 17 条 | 上游 `build_interrupt_payload` 按 finding 生成 items，一个 clause 被两个风险维度命中就出两条 | `build_interrupt_payload` 按 clause_id 聚合 + `V8` 加 `risk_types` 列 + 前端兼容两代事件 |
+| 17 | 数据诚信 | 快照 JSON 坏了，审批仍 200 成功，`risk`/`before_wording` 全为 NULL | `parsePendingItems` 用一个 catch 把「合法空」和「解析失败」都返回空 map（fail-open） | 解析失败抛 422 `APPROVAL_PAYLOAD_INVALID` + 写入要求快照依据 + `V9` 把 `risk` 改 NOT NULL |
 
 ---
 
@@ -146,6 +147,22 @@
 - **前端兼容两代事件**：`InterruptItem.risk_type` 改为可选，新增 `risk_types` / `findings_merged`；`groupItems` 先按 clause 归并再渲染，旧版「一条 finding 一条 item」的快照仍能打开历史审批链接。
 - **粒度认知（面试可讲）**：审批的**业务粒度**是条款（人只对条款表态），**数据粒度**是 finding（`(clause_id, risk_type)` 去重键）。当前唯一键建在条款上是对的，因为演示里是整条通过；若业务将来要「这个风险同意、那个不同意」，唯一键才该挪到 finding 上，UI 继续按条款分组。
 
+### 🐞 17. 数据诚信 — 快照解析失败被当成「没有待审项」，审批成功但留痕全空
+- **现象**：造测试数据时用 `mysql -e` 插入含 `\n` 的 JSON，转义被破坏，`pending_payload` 成了非法 JSON。审批接口照样返回 **200 `accepted`**，但落库的 `risk` / `risk_types` / `before_wording` 全是 NULL——一条「已通过但不知批的是什么」的审计记录。
+- **根因**：`parsePendingItems` 一个 `catch (Exception) { return Map.of(); }` 把两种完全不同的情况压成同一种结果：
+  - A：payload 里本来就没有待审项（合法）；
+  - B：payload 存在但解析失败（异常）。
+
+  返回空 map 后，`ApprovalApplier` 里 `if (item != null)` 直接跳过留痕字段，写入照常成功。**错误被降级成了正常分支。**
+- **为什么必须拒、不能容错**：审批记录是审计凭证。空留痕的记录在合规意义上等于「没批过」，而系统显示「已通过」；发现它要等半年后的审计，那时也补救不了（当时批的是哪条、什么风险，永远不知道）。反过来，审批失败用户立刻会来问、重试一下就好。**这是 fail-open 与 fail-closed 的区别，审计路径必须 fail-closed**——「审批成功、留痕全空」是数据诚信问题，不是体验问题。
+- **修复**（分三层，各自管一段）：
+  1. **解析**：payload 为空 → 放行（这份 review 没有中断快照）；非法 JSON、缺 `items`、`items` 为空、`items` 里没有可用 `clause_id` → 抛 `ApprovalPayloadInvalidException`。空 payload 仍放行是有意的：真走到写入时，下一层会因为「快照里没有该条款」拒绝。
+  2. **写入**：`ApprovalApplier` 加一条不变量——要写的 clause 必须能在快照里找到且带 `risk`，否则整单拒绝。没有依据就不许落库，而不是写几个 null 凑合。
+  3. **数据库**：`V9` 把 `approval.risk` 改为 `NOT NULL`（先查存量 `SELECT COUNT(*) FROM approval WHERE risk IS NULL`，本机 0 行）。代码层拦不住「有人直接写 SQL」，数据库兜最后一道。
+- **错误码用 422 不用 409**：409 `CONTRACT_CHANGED` 的语义是「基线不匹配，刷新合同后重试」，会把前端提示和排查方向都带到并发上；这里是「数据本身不合法，重试无用」，对应 422 `APPROVAL_PAYLOAD_INVALID`。码混了比没码更误导。
+- **验证**：单测 4 条（非法 JSON / 缺 items / 快照外的 clause / 快照项缺 risk，都断言不写库、不发 resume、必要时状态不动）；`AdminReviewControllerTest` 断言 422 + `APPROVAL_PAYLOAD_INVALID`；`FlywayMigrationTest` 增加「`risk` 必须 NOT NULL」，并在应用 V9 **之前**先跑了一次——它红了（既报 pending 非空，也报 risk 仍可为空），这是这个测试第三次证明自己不是安慰剂。
+- **实机回归**：正常路径 3 条待审 → 200、3 条全落库、`risk` 非空、`risk_types` 保留、状态 RUNNING、重复提交 409 且不增行；坏快照 → 422、0 条落库、状态仍是 `AWAITING_APPROVAL`（解析发生在状态抢占之前，连状态都没被改）。
+
 
 ---
 
@@ -165,6 +182,9 @@
 13. **去重会掩盖上游的重复**：下游按业务键去重（保住唯一约束）之后，多余数据的来源就不再有症状了。该顺手往上追一层——这次的「重复审批」根因根本不在审批接口，在生成待审项的地方。
 14. **一个约束只能挡住一个方向**：`(review_id, clause_id)` 唯一约束挡住的是「重复写入」，挡不住「待审列表里同一条款出现两次」。后者是数据建模问题，得往上改生成逻辑，不是加约束能解决的。
 15. **业务粒度 ≠ 数据粒度**：审批人表态的单位是条款，finding 的去重键却细到 `(clause_id, risk_type)`。两层的粒度差异必须在「生成待审项」这一步收敛掉，否则差异会一路传导到唯一约束上，变成一个假 bug。
+16. **fail-open 的典型形状是 `catch (Exception) { return 空集合; }`**：空集合和「解析失败」在调用方看起来一模一样，错误就此被降级成正常分支。凡是「结果为空」可能意味着坏掉了的地方，都必须把「合法为空」和「失败」显式分开。
+17. **审计路径宁可拒，不可降级**：写不进去只是体验问题（用户重试），写进去却缺关键字段是数据诚信问题（没人发现，无法补救）。判断标准不是「哪种更少打扰用户」，而是「半年后被审计翻出来，还能不能解释清楚」。
+18. **数据库约束要配一条代码层的前置校验**：`NOT NULL` 能把脏数据挡在库外，但触发时是 500 + 栈；先在代码里判一次并给出 422，约束才是兜底而不是报错来源。
 
 ## 四、提交记录（对应修复）
 - `dd7e8f2` 阶段 13（含看门狗 Repository 方法预置）

@@ -35,6 +35,10 @@ import java.util.Set;
  *   <li>{@code uk_approval_review_clause} 唯一约束管前两道都漏掉的并发窗口，是最后兜底。</li>
  * </ol>
  * 顺序不能反：约束是兜底不是入口，靠它挡日常路径只会把正常重试变成 500。
+ *
+ * <p>最后一条不变量：每条要写的审批都必须能在待审快照里找到依据（clause 存在且带 risk），
+ * 否则整单拒绝。审查路径 fail-closed —— 没有依据的审批宁可批不了，也不能写出一条
+ * 「已通过但不知批的是什么」的记录。
  */
 @Service
 public class ApprovalApplier {
@@ -101,14 +105,23 @@ public class ApprovalApplier {
             approval.setComment(req.getComment());
             approval.setOperator(operator);
             approval.setCreatedAt(now);
+            // 没有快照依据就不许落库：审批记录必须能回答「当时批的是哪一条、什么风险」。
+            // 写下去但留痕为空，等于伪造了一条「已审批」的假象——比审批失败严重得多。
             JsonNode item = pendingByClause == null ? null : pendingByClause.get(req.getClauseId());
-            if (item != null) {
-                approval.setBeforeWording(textOrNull(item.path("clause_text")));
-                approval.setRisk(textOrNull(item.path("risk")));
-                // 聚合后一条待审项可能覆盖多个风险维度（payment_risk + disclaimer_risk）：
-                // 只存档位会让审计里看不出这条决定审了几类问题。
-                approval.setRiskTypes(joinRiskTypes(item.path("risk_types")));
+            if (item == null) {
+                throw new ApprovalPayloadInvalidException(
+                        reviewId, "待审快照里没有 clause " + req.getClauseId());
             }
+            String risk = textOrNull(item.path("risk"));
+            if (risk == null || risk.isBlank()) {
+                throw new ApprovalPayloadInvalidException(
+                        reviewId, "待审项缺少 risk: " + req.getClauseId());
+            }
+            approval.setBeforeWording(textOrNull(item.path("clause_text")));
+            approval.setRisk(risk);
+            // 聚合后一条待审项可能覆盖多个风险维度（payment_risk + disclaimer_risk）：
+            // 只存档位会让审计里看不出这条决定审了几类问题。
+            approval.setRiskTypes(joinRiskTypes(item.path("risk_types")));
             approval.setAfterWording(req.getEditedText());
             approvalRepository.save(approval);
         }

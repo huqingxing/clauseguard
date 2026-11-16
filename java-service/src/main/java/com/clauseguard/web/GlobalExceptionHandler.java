@@ -5,6 +5,7 @@ import com.clauseguard.admin.InvalidApprovalStatusException;
 import com.clauseguard.api.model.Error;
 import com.clauseguard.contract.ContractNotFoundException;
 import com.clauseguard.contract.ContractUploadException;
+import com.clauseguard.review.ApprovalPayloadInvalidException;
 import com.clauseguard.review.ContractChangedException;
 import com.clauseguard.review.ReviewNotFoundException;
 import org.slf4j.Logger;
@@ -68,6 +69,21 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Error handleInvalidApprovalStatus(InvalidApprovalStatusException ex) {
         return new Error().code("INVALID_APPROVAL_STATUS").message(ex.getMessage());
+    }
+
+    /**
+     * 审批快照不可用 → 422，绝不用 409。
+     *
+     * <p>409 CONTRACT_CHANGED 的语义是「基线不匹配，前端刷新合同后重试」；这里是
+     * 「数据本身不合法，重试无用」。用错码会把排查引向并发方向，而真正的现场是快照损坏。
+     *
+     * <p>详情（哪个 review、哪条 clause、JSON 第几行坏）只进日志，响应体给固定文案。
+     */
+    @ExceptionHandler(ApprovalPayloadInvalidException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public Error handleApprovalPayloadInvalid(ApprovalPayloadInvalidException ex) {
+        log.error("审批被拒绝（快照不可用）：review={}，{}", ex.getReviewId(), ex.getDetail());
+        return new Error().code("APPROVAL_PAYLOAD_INVALID").message(ex.getMessage());
     }
 
     /**
