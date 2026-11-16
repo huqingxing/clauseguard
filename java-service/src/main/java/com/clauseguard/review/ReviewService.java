@@ -19,6 +19,7 @@ import com.clauseguard.events.EventReplayStore;
 import com.clauseguard.events.StoredEvent;
 import com.clauseguard.observability.TraceContextSupport;
 import com.clauseguard.review.ContractChangedException;
+import com.clauseguard.review.domain.Approval;
 import com.clauseguard.review.domain.Review;
 import com.clauseguard.review.domain.ReviewEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -32,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -57,6 +59,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.stream.Collectors;
 
 /**
  * 审查任务编排：落库、异步触发 Python、把事件流原样透传给前端并落库/可断线续传。
@@ -438,7 +441,26 @@ public class ReviewService {
         Map<String, JsonNode> pendingByClause = parsePendingItems(snapshot.getPendingPayload());
 
         // 抢占 + 乐观锁 + 落库 + 切状态的原子段：并发下只有一个请求能通过。
-        String runId = approvalApplier.apply(reviewId, approvals, operator, pendingByClause);
+        String runId;
+        try {
+            runId = approvalApplier.apply(reviewId, approvals, operator, pendingByClause);
+        } catch (DataIntegrityViolationException ex) {
+            // 在这里 catch 是安全的：apply 是另一个 Bean，异常穿出代理时事务已经回滚完。
+            // 若把 catch 写进 apply 内部，连接已被标记 rollback-only，方法返回后提交会变成
+            // UnexpectedRollbackException —— 比 500 更难查。
+            if (alreadyRecorded(reviewId, approvals)) {
+                // 撞的确实是 uk_approval_review_clause，且请求里的 clause 全都在库里：
+                // 这一单真的已经批过了，按幂等返回 accepted，并且不再发 resume ——
+                // 另一个请求已经在续跑，这里再发一次 Python 会收到两份审批结果。
+                logger.info("approval already recorded for review {}, treated as idempotent", reviewId);
+                return new ApproveResponse()
+                        .status(ApproveResponse.StatusEnum.ACCEPTED)
+                        .decidedAt(OffsetDateTime.now(ZoneOffset.UTC));
+            }
+            // 库里没有对应记录 → 不是「批过了」，是别的原因撞了约束（字段超长、脏数据），
+            // 不能当幂等吞掉，照实往上抛。
+            throw ex;
+        }
 
         // 转发到 Python resume：审批结果数组即 interrupt 的返回值。以 SSE 订阅续跑事件，
         // 由本服务的 handleAgentEvent 把完成事件续接到前端订阅的 SSE（前端无需重连即收终态）。
@@ -457,6 +479,20 @@ public class ReviewService {
         return new ApproveResponse()
                 .status(ApproveResponse.StatusEnum.ACCEPTED)
                 .decidedAt(OffsetDateTime.now(ZoneOffset.UTC));
+    }
+
+    /**
+     * 请求里的每个 clause 是否都已在库中留痕。全部命中才算「这一单确实批过了」；
+     * 只命中一部分说明是另一类写入失败，不能当幂等吞掉。
+     */
+    private boolean alreadyRecorded(String reviewId, List<ApproveRequest> approvals) {
+        if (approvals == null || approvals.isEmpty()) {
+            return false;
+        }
+        Set<String> existing = approvalRepository.findByReviewId(reviewId).stream()
+                .map(Approval::getClauseId)
+                .collect(Collectors.toSet());
+        return approvals.stream().allMatch(a -> existing.contains(a.getClauseId()));
     }
 
     private static String textOrNull(JsonNode node) {

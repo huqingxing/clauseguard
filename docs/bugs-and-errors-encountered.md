@@ -23,6 +23,8 @@
 | 11 | 加固 | 检索静默 0 命中，链路照常跑完 | `pg_dsn` 默认串指向 `5432/clauseguard_agent`（另一个库），配置丢失时连空库不报错 | 删默认值，`ChunkStore` 构造期 fail-fast |
 | 12 | 加固 | 未预期异常的 500 可能带堆栈、表名、绝对路径 | 只映射了 6 个业务异常，其余走 Spring 默认处理 | 兜底 handler：`ErrorResponse` 原样放行，其余固定文案 |
 | 13 | 加固 | `ContractController` 直接注入 `ReviewRepository` | 跨模块越过 Service 层直接读别人的仓储 | 下沉为 `ReviewService.latestReview/latestReviews` |
+| 14 | 加固 | 同一 review 的同一 clause 出现两条审批记录 | `approval` 只有 `(review_id)` 普通索引；状态 CAS 只管 review 状态，管不到请求体里的重复 clause | `V7` 加 `uk_approval_review_clause` + 写前判重 + 事务外捕获冲突当幂等 |
+| 15 | 运维 | `flyway_schema_history` 停在 v5，V6 的索引在库里根本不存在 | 测试要么不连库、要么显式关 Flyway，迁移从未被真实执行过 | 用 flyway-maven-plugin 对本地库实跑 `migrate`，v5 → v7 |
 
 ---
 
@@ -113,6 +115,23 @@
 - **修复**：`ReviewService` 新增 `record LatestReview(reviewId, status)` 与 `latestReview(contractId)` / `latestReviews(contractIds)` 两个只读方法；Controller 只依赖 `ContractService` + `ReviewService`，返回轻量视图而不是整个 `Review` 实体（实体含 `pending_payload` 这类大字段）。
 - **验证**：`last_review` 字段名、状态小写取值、「无审查则不输出该字段」全部保持原样；132 测试全绿，`ContractControllerTest` 删掉已无引用的 `@MockBean ReviewRepository`。
 
+### 🐞 14. 加固 — 同一 clause 被审批两次（CAS 之后仍有的窗口）
+- **现象**：同一个 review 的同一个 clause 在 `approval` 里有两行。实测全表 23 行只对应 19 个唯一 `(review_id, clause_id)`，即 4 组重复。
+- **根因**：`approval` 只有 `INDEX idx_approval_review (review_id)`，**没有任何唯一约束**。状态 CAS 挡的是「两个请求同时从 AWAITING_APPROVAL 抢同一份快照」，它看的是 review 状态、不看请求体——所以「一次请求里 approvals 数组带了两遍同一 clause」它拦不住；历史上「一条审批一个独立事务」时代留下的半成品它也拦不住。
+- **修复**：三层，各管一段，顺序不能反：
+  1. `V7` 加 `uk_approval_review_clause UNIQUE (review_id, clause_id)`——最后一道兜底；
+  2. `ApprovalApplier` 写前用 `findByReviewId` 取已有 clause 集合，已在库里的**跳过不覆盖**（审批是一次性决定，以第一次为准），同一个集合顺带挡掉请求体内的重复；
+  3. `ReviewService.approveReview` 捕获 `DataIntegrityViolationException` 后**回查库里是否真的落了这批 clause**：全部命中才当幂等返回 `accepted` 且**不再发 resume**（赢家已经在续跑，再发一次 Python 会收到两份审批结果）；一个都没落库说明是别的原因撞约束（字段超长之类），照实往上抛。
+- **关键点**：**不能在 `@Transactional` 方法内部 catch 约束冲突后继续往下走**。一旦 JDBC 抛出完整性违规，事务已被标记 rollback-only，方法正常返回后提交会抛 `UnexpectedRollbackException`——比原来的 500 更难查。所以捕获必须放在**事务边界之外**（`ApprovalApplier` 是独立 Bean，异常穿出代理时回滚已完成）。
+- **脏数据处理**：迁移里**不写 DELETE**——本机有重复不代表别的环境也有，写死 DML 只会误删。正确顺序是先跑 `GROUP BY ... HAVING c > 1`，有结果先人工处置。本次 4 组重复的两行在 decision/operator/时间上完全一致（同一次演示的双写），按「保留 id 最大」删掉 4 行；删前整表 `mysqldump` 到 `.backup/`。
+- **验证**：约束加上后插重复行直接 `ERROR 1062 ... for key 'approval.uk_approval_review_clause'`；单测新增 4 条（同请求重复 clause 只写一条 / 库内已存在则跳过不覆盖 / 撞约束且已落库→`accepted` 且不发 resume / 撞约束但库里没有→重抛），全量 137 通过。
+
+### 🐞 15. 运维 — 迁移文件提交了，本地库却没跑过
+- **现象**：`V6`（两个索引）早已提交，但 `flyway_schema_history` 只到 v5，库里查不到 `idx_review_contract_created`。也就是说「索引补上了」这件事在本地从未发生，只是代码仓库里有这个文件。
+- **根因**：全量测试里的 `@SpringBootTest` 要么是 Web 切片（不加载数据源），要么仓储全是 `@Mock`；唯一真正连库的集成测试又显式 `spring.flyway.enabled=false`。于是「迁移能不能应用」从来没被任何一次测试验证过——**测试全绿 ≠ 迁移能跑**。
+- **修复**：用 flyway-maven-plugin 对本地库实跑一次 `migrate`（`-Dflyway.locations=filesystem:src/main/resources/db/migration`，v5 → v7），再把两个新索引和唯一约束用 `SHOW INDEX` 逐个核对。
+- **关键点**：迁移的正确性只能靠「真库跑一遍」证明。把 `migrate` 当成发布流程里的独立一步，不要假设「应用一启动就自动好了」——启动失败时 Flyway 往往不是第一个报错的组件，很容易被别的错误盖住。
+
 ---
 
 ## 三、经验 / 面试可讲的要点
@@ -124,6 +143,9 @@
 6. **默认值是一种承诺**：给数据库连接串配一个"看起来能用"的默认值，等于承诺"配置丢了也能跑"。连错库不会报错，只会安静地返回 0 命中——这种 bug 比启动失败难查一个数量级，所以宁可让构造期直接抛错。
 7. **全局兜底异常前先放行框架语义**：`ErrorResponse`（404/405/415）自带正确的状态码，一律按 500 兜底会把"路径写错"变成"服务挂了"。
 8. **索引跟着查询形态建**：`(过滤列, 排序列)` 联合索引，把"按合同过滤 + 取最新一条"一次走完；判断有没有索引要看实际 SQL，不是看表有没有主键。
+9. **唯一约束不能拿来当日常路径**：约束是兜底，不是入口。靠它挡重复点击，只会把"刷新一下就好"变成 500。先写前判重、再靠约束兜漏网的并发窗口，顺序反了体验就崩。
+10. **事务内 catch 完整性违规等于没修**：连接被标记 rollback-only 后，方法正常返回也会在提交时炸成 `UnexpectedRollbackException`。要幂等化，捕获必须落在事务边界外。
+11. **迁移文件存在 ≠ 数据库已迁移**：所有测试都不连真库时，"schema 有变更"只是一句仓库里的话。发布前必须独立跑一次 `migrate` 并核对实际索引。
 
 ## 四、提交记录（对应修复）
 - `dd7e8f2` 阶段 13（含看门狗 Repository 方法预置）

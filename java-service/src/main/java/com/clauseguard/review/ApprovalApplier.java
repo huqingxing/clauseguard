@@ -8,9 +8,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 审批落库的唯一事务入口：抢占状态 → 乐观锁校验 → 写审批记录。
@@ -25,6 +27,14 @@ import java.util.Objects;
  *
  * <p>修复前的现场：每条 approval 各自一次提交，19 条就是 19 个事务。第 10 条失败时
  * 前 9 条已落库、review 仍是 AWAITING_APPROVAL；两个请求并发时又都能通过校验并双写。
+ *
+ * <p>三道防线各管一段，别混为一谈：
+ * <ol>
+ *   <li>状态 CAS（{@code markStatusIfCurrent}）管「两个请求同时抢同一份待审快照」；</li>
+ *   <li>写前判重（{@link ApprovalRepository#findByReviewId}）管「同一 clause 被写两次」；</li>
+ *   <li>{@code uk_approval_review_clause} 唯一约束管前两道都漏掉的并发窗口，是最后兜底。</li>
+ * </ol>
+ * 顺序不能反：约束是兜底不是入口，靠它挡日常路径只会把正常重试变成 500。
  */
 @Service
 public class ApprovalApplier {
@@ -69,8 +79,21 @@ public class ApprovalApplier {
             }
         }
 
+        // 写前幂等：库里已有该 clause 的审批记录，说明这一条之前就批过了（历史「一条审批一个事务」
+        // 时代留下的半成品），再写一次会撞 uk_approval_review_clause 把整单打成失败。
+        // 同一个 written 集合顺带挡掉「一次请求里重复带同一个 clause_id」——CAS 拦不住这条，
+        // 因为它看的是 review 状态，不看请求体。
+        Set<String> written = new HashSet<>();
+        for (Approval existing : approvalRepository.findByReviewId(reviewId)) {
+            written.add(existing.getClauseId());
+        }
+
         Instant now = Instant.now();
         for (ApproveRequest req : approvals) {
+            if (!written.add(req.getClauseId())) {
+                // 已经批过：以第一次的结论为准，不覆盖。审批是「一次性决定」，不是可反复改写的配置。
+                continue;
+            }
             Approval approval = new Approval();
             approval.setReviewId(reviewId);
             approval.setClauseId(req.getClauseId());

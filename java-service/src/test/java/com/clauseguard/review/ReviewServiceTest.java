@@ -29,6 +29,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
@@ -369,6 +370,100 @@ class ReviewServiceTest {
         assertThat(a2.getAfterWording()).isEqualTo("修订后条款二");
         // 转发 Python resume（审批结果数组即 interrupt 返回值）。
         verify(agentClient).streamResume(eq("run-abc"), any(), anyString());
+    }
+
+    // ---- (review_id, clause_id) 唯一约束：写前幂等 + 兜底冲突不当 500 ----
+
+    @Test
+    void approveWritesOneRowWhenSameClauseRepeatsInOneRequest() {
+        Review review = awaitingReview("r-dup");
+        when(reviewRepository.findById("r-dup")).thenReturn(Optional.of(review));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
+        when(approvalRepository.findByReviewId("r-dup")).thenReturn(List.of());
+        when(approvalRepository.save(any(Approval.class))).thenAnswer(i -> i.getArgument(0));
+        doReturn(Flux.empty()).when(agentClient).streamResume(eq("run-abc"), any(), anyString());
+
+        // 前端重复提交同一个 clause：CAS 只看 review 状态，拦不住请求体里的重复。
+        ApproveRequest twice = approveOf("c1");
+        service.approveReview("r-dup", List.of(twice, twice), "alice");
+
+        verify(approvalRepository, org.mockito.Mockito.times(1)).save(any(Approval.class));
+    }
+
+    @Test
+    void approveSkipsClauseAlreadyRecordedInsteadOfOverwriting() {
+        Review review = awaitingReview("r-old");
+        when(reviewRepository.findById("r-old")).thenReturn(Optional.of(review));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
+        // 库里已有 c1（历史「一条审批一个事务」时代批了一半的现场）。
+        when(approvalRepository.findByReviewId("r-old")).thenReturn(List.of(storedApproval("r-old", "c1")));
+        doReturn(Flux.empty()).when(agentClient).streamResume(eq("run-abc"), any(), anyString());
+
+        service.approveReview("r-old", List.of(approveOf("c1")), "alice");
+
+        // 已批过就以第一次的结论为准：不再写，也不会撞唯一约束。
+        verify(approvalRepository, never()).save(any(Approval.class));
+    }
+
+    @Test
+    void approveFallsBackToIdempotentWhenUniqueConstraintRaces() {
+        Review review = awaitingReview("r-idem");
+        when(reviewRepository.findById("r-idem")).thenReturn(Optional.of(review));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
+        // 第一次判重：还没有；第二次（冲突后复核）：另一个请求已经写进去了。
+        when(approvalRepository.findByReviewId("r-idem"))
+                .thenReturn(List.of())
+                .thenReturn(List.of(storedApproval("r-idem", "c1")));
+        when(approvalRepository.save(any(Approval.class)))
+                .thenThrow(new DataIntegrityViolationException("Duplicate entry for key 'uk_approval_review_clause'"));
+
+        ApproveResponse response = service.approveReview("r-idem", List.of(approveOf("c1")), "alice");
+
+        // 结论等价于「已经批过了」：返回 accepted，而不是把并发变成 500。
+        assertThat(response.getStatus()).isEqualTo(ApproveResponse.StatusEnum.ACCEPTED);
+        // 也不能再发 resume —— 赢的那个请求已经在续跑，再发一次 Python 会收到两份审批结果。
+        verify(agentClient, never()).streamResume(anyString(), any(), anyString());
+    }
+
+    @Test
+    void approveRethrowsWhenConstraintViolationIsNotADuplicateApproval() {
+        Review review = awaitingReview("r-bad");
+        when(reviewRepository.findById("r-bad")).thenReturn(Optional.of(review));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
+        // 两次复核都查不到记录 → 不是「批过了」，是别的原因撞了约束（字段超长之类）。
+        when(approvalRepository.findByReviewId("r-bad")).thenReturn(List.of());
+        when(approvalRepository.save(any(Approval.class)))
+                .thenThrow(new DataIntegrityViolationException("Data too long for column 'comment'"));
+
+        assertThatThrownBy(() -> service.approveReview("r-bad", List.of(approveOf("c1")), "alice"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private static Review awaitingReview(String id) {
+        Review review = new Review();
+        review.setId(id);
+        review.setStatus(ReviewStatus.AWAITING_APPROVAL);
+        review.setContractVersion("1");
+        review.setContentHash("hash-1");
+        review.setRunId("run-abc");
+        return review;
+    }
+
+    private static ApproveRequest approveOf(String clauseId) {
+        return new ApproveRequest()
+                .clauseId(clauseId)
+                .decision(ApproveRequest.DecisionEnum.APPROVE)
+                .contractVersion("1")
+                .contentHash("hash-1");
+    }
+
+    private static Approval storedApproval(String reviewId, String clauseId) {
+        Approval approval = new Approval();
+        approval.setReviewId(reviewId);
+        approval.setClauseId(clauseId);
+        approval.setDecision("approve");
+        approval.setOperator("bob");
+        return approval;
     }
 
     // ---- Stage 12：合同必须存在（404 而非空跑）；source 透传；查询面整形 ----
