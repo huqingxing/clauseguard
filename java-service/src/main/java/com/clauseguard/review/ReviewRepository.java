@@ -92,6 +92,21 @@ public interface ReviewRepository extends JpaRepository<Review, String> {
                                      @Param("cutoff") String cutoff);
 
     /**
+     * 状态抢占（CAS）：只有当前状态等于 from 时才改成 to，返回受影响行数。
+     *
+     * <p>审批入口用它做「谁先拿到 1 谁继续」：并发两个请求同时点审批时，只有一个事务
+     * 能拿到 1，另一个拿 0 直接按 409 拒绝，避免两边都通过校验、都写 approval。
+     * <p>用 JPQL 而不是原生 SQL：不涉及方言差异，且与 reapStuckRunning 的条件更新同构。
+     * <p>clearAutomatically 必须开：批量 UPDATE 绕过持久化上下文，不清会让后续
+     * findById 拿到脏的旧状态。
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Review r SET r.status = :to WHERE r.id = :id AND r.status = :from")
+    int markStatusIfCurrent(@Param("id") String id,
+                            @Param("from") String from,
+                            @Param("to") String to);
+
+    /**
      * 条件更新（Stage 14）：把单条 RUNNING 置 FAILED，顺手把 last_event_at 推进到回收时刻（now），返回受影响行数。
      *
      * <p>幂等 + 并发安全全靠 WHERE 里的两个条件：多副本同时扫同一批时，只有一个实例

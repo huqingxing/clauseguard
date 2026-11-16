@@ -19,7 +19,6 @@ import com.clauseguard.events.EventReplayStore;
 import com.clauseguard.events.StoredEvent;
 import com.clauseguard.observability.TraceContextSupport;
 import com.clauseguard.review.ContractChangedException;
-import com.clauseguard.review.domain.Approval;
 import com.clauseguard.review.domain.Review;
 import com.clauseguard.review.domain.ReviewEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -52,7 +51,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -97,6 +95,12 @@ public class ReviewService {
     private final ReviewEventWriter eventWriter;
 
     /**
+     * 审批落库的唯一事务入口：状态抢占 + 乐观锁校验 + 19 条审批记录 + 切回 RUNNING，同一个事务。
+     * 同样单独成 Bean——approveReview 在本 Bean 内调用，直接给它加 @Transactional 会静默失效。
+     */
+    private final ApprovalApplier approvalApplier;
+
+    /**
      * 产物读取的白名单根目录：只有落在这棵子树下的本地文件才允许经 file: 分支回传。
      * 没有这道校验，任何能改写事件 payload 的一方都能借该端点读走任意本地文件。
      */
@@ -116,6 +120,7 @@ public class ReviewService {
             ContractRepository contractRepository,
             TraceContextSupport traceSupport,
             ReviewEventWriter eventWriter,
+            ApprovalApplier approvalApplier,
             @Value("${clauseguard.artifact.local-root:${clauseguard.contract.upload-dir:./uploads}}")
             String artifactLocalRoot) {
         this.reviewRepository = reviewRepository;
@@ -128,6 +133,7 @@ public class ReviewService {
         this.contractRepository = contractRepository;
         this.traceSupport = traceSupport;
         this.eventWriter = eventWriter;
+        this.approvalApplier = approvalApplier;
         this.artifactRoot = Path.of(artifactLocalRoot).toAbsolutePath().normalize();
     }
 
@@ -417,55 +423,25 @@ public class ReviewService {
     }
 
     /**
-     * 高风险条款人工审批决定：乐观锁校验 → 落库审批记录（含操作人/时间/前后措辞）→ 转发 Python resume。
+     * 高风险条款人工审批决定：抢占状态 + 乐观锁校验 + 落库审批记录 + 转发 Python resume。
      *
-     * 原子性（验收 c）：contract_version/content_hash 与中断基线逐条比对，任一不匹配即整体抛
-     * ContractChangedException（409 CONTRACT_CHANGED），在写入任何审批记录/触发 resume 之前判定，
-     * 因此不会产生部分执行。审批记录与「恢复运行」均在通过校验后才发生。
+     * <p>写入段收进 ApprovalApplier 的单个事务：状态抢占、基线校验、19 条审批记录、切回 RUNNING
+     * 要么全成要么全不成。修复前 approveReview 自身没有事务，每条 approval 是一个独立提交，
+     * 中途失败会留下「批了一半、状态还在待审」的现场；并发两个请求也能同时通过校验并双写。
+     *
+     * <p>事务外才发起 resume：异步 SSE 订阅不能罩在事务里（详见 ApprovalApplier 注释）。
      */
     public ApproveResponse approveReview(String reviewId, List<ApproveRequest> approvals, String operator) {
-        Review review = reviewRepository.findById(reviewId)
+        // 快照解析留在 Service：它只依赖 ObjectMapper，不需要进事务。
+        Review snapshot = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ReviewNotFoundException(reviewId));
-        if (review.getStatus() != ReviewStatus.AWAITING_APPROVAL) {
-            // 非待审态（已审批/仍在跑）视为冲突，避免重复或错序审批。
-            throw new ContractChangedException(reviewId);
-        }
-        if (approvals == null || approvals.isEmpty()) {
-            throw new ContractChangedException(reviewId);
-        }
-        // 乐观锁：逐条比对基线；任一不匹配即整体拒绝（原子，无部分写入）。
-        for (ApproveRequest req : approvals) {
-            if (!Objects.equals(req.getContractVersion(), review.getContractVersion())
-                    || !Objects.equals(req.getContentHash(), review.getContentHash())) {
-                throw new ContractChangedException(reviewId);
-            }
-        }
-        // 解析中断时缓存的逐条款待审项，供审批记录留痕（前措辞 / 风险档）。
-        Map<String, JsonNode> pendingByClause = parsePendingItems(review.getPendingPayload());
-        Instant now = Instant.now();
-        // 落库审批记录（含操作人、时间、前后措辞、风险档）；先写记录再触发 resume。
-        for (ApproveRequest req : approvals) {
-            Approval approval = new Approval();
-            approval.setReviewId(reviewId);
-            approval.setClauseId(req.getClauseId());
-            approval.setDecision(req.getDecision() == null ? null : req.getDecision().getValue());
-            approval.setComment(req.getComment());
-            approval.setOperator(operator);
-            approval.setCreatedAt(now);
-            JsonNode item = pendingByClause.get(req.getClauseId());
-            if (item != null) {
-                approval.setBeforeWording(textOrNull(item.path("clause_text")));
-                approval.setRisk(textOrNull(item.path("risk")));
-            }
-            approval.setAfterWording(req.getEditedText());
-            approvalRepository.save(approval);
-        }
-        // 状态切回 RUNNING；恢复后由 run.completed 事件置 COMPLETED。
-        review.setStatus(ReviewStatus.RUNNING);
-        reviewRepository.save(review);
+        Map<String, JsonNode> pendingByClause = parsePendingItems(snapshot.getPendingPayload());
+
+        // 抢占 + 乐观锁 + 落库 + 切状态的原子段：并发下只有一个请求能通过。
+        String runId = approvalApplier.apply(reviewId, approvals, operator, pendingByClause);
+
         // 转发到 Python resume：审批结果数组即 interrupt 的返回值。以 SSE 订阅续跑事件，
         // 由本服务的 handleAgentEvent 把完成事件续接到前端订阅的 SSE（前端无需重连即收终态）。
-        String runId = review.getRunId();
         if (runId != null) {
             subscribing.put(reviewId, Boolean.TRUE);
             agentClient.streamResume(runId, approvals, generateTraceparent())

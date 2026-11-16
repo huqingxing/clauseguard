@@ -181,6 +181,7 @@ class ReviewStreamReplayIntegrationTest {
                     reviewRepository, reviewEventRepository, approvalRepository,
                     replayStore, agentClient, circuitBreakerRegistry, mapper, contractRepository,
                     traceSupport, new ReviewEventWriter(reviewRepository, reviewEventRepository),
+                    new ApprovalApplier(reviewRepository, approvalRepository),
                     "target/test-artifacts");
         }
     }

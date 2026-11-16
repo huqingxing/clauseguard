@@ -108,6 +108,7 @@ class ReviewServiceTest {
                 replayStore, agentClient, registry, mapper, contractRepository,
                 new TraceContextSupport(noTracer()),
                 new ReviewEventWriter(reviewRepository, reviewEventRepository),
+                new ApprovalApplier(reviewRepository, approvalRepository),
                 artifactRoot.toString());
         // 仅 createReview 路径需要 save；其余测试不触发，故标为 lenient 避免严格模式报错。
         lenient().when(reviewRepository.save(any(Review.class))).thenAnswer(i -> i.getArgument(0));
@@ -267,6 +268,8 @@ class ReviewServiceTest {
         review.setContentHash("hash-1");
         review.setRunId("run-abc");
         when(reviewRepository.findById("r-409")).thenReturn(Optional.of(review));
+        // 抢占必须成功，否则用例会因为「拿不到状态」而非「基线不匹配」抛异常——那是假绿。
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
 
         ApproveRequest bad = new ApproveRequest()
                 .clauseId("c1")
@@ -280,6 +283,34 @@ class ReviewServiceTest {
 
         // 关键：乐观锁在写入任何审批记录之前判定，不得产生部分执行。
         verify(approvalRepository, never()).save(any(Approval.class));
+    }
+
+    // ---- 审批并发：状态抢占失败（别人已抢到/已审批）→ 409，且一条审批记录都不写 ----
+
+    @Test
+    void approveRejectsWhenStatusClaimLosesRace() {
+        Review review = new Review();
+        review.setId("r-race");
+        review.setStatus(ReviewStatus.AWAITING_APPROVAL);
+        review.setContractVersion("1");
+        review.setContentHash("hash-1");
+        review.setRunId("run-abc");
+        when(reviewRepository.findById("r-race")).thenReturn(Optional.of(review));
+        // 条件更新拿 0 行 = 另一个事务已经把状态从 AWAITING_APPROVAL 抢走。
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(0);
+
+        ApproveRequest ok = new ApproveRequest()
+                .clauseId("c1")
+                .decision(ApproveRequest.DecisionEnum.APPROVE)
+                .contractVersion("1")
+                .contentHash("hash-1");
+
+        assertThatThrownBy(() -> service.approveReview("r-race", List.of(ok), "alice"))
+                .isInstanceOf(ContractChangedException.class);
+
+        // CAS 拿不到行就必须整体退出：不写审批记录，也不转发 resume。
+        verify(approvalRepository, never()).save(any(Approval.class));
+        verify(agentClient, never()).streamResume(anyString(), any(), anyString());
     }
 
     // ---- Stage 9：approveReview 成功 → 落库审批记录（含操作人/前后措辞）+ 转发 resume ----
@@ -298,6 +329,7 @@ class ReviewServiceTest {
                 + "{\"clause_id\":\"c2\",\"risk\":\"high\",\"clause_text\":\"原文二\"}]}");
         when(reviewRepository.findById("r-ok")).thenReturn(Optional.of(review));
         when(approvalRepository.save(any(Approval.class))).thenAnswer(i -> i.getArgument(0));
+        when(reviewRepository.markStatusIfCurrent(anyString(), anyString(), anyString())).thenReturn(1);
         doReturn(Flux.empty()).when(agentClient)
                 .streamResume(eq("run-abc"), any(), anyString());
 
@@ -317,8 +349,10 @@ class ReviewServiceTest {
         ApproveResponse response = service.approveReview("r-ok", approvals, "alice");
 
         assertThat(response.getStatus()).isEqualTo(ApproveResponse.StatusEnum.ACCEPTED);
-        // 状态切回 RUNNING（恢复后由 run.completed 置 COMPLETED）。
-        assertThat(review.getStatus()).isEqualTo(ReviewStatus.RUNNING);
+        // 状态切回 RUNNING 由条件更新完成（恢复后由 run.completed 置 COMPLETED）：
+        // 实体对象不会被 mock 改动，所以这里验的是「发出了正确的抢占语句」。
+        verify(reviewRepository).markStatusIfCurrent(
+                "r-ok", ReviewStatus.AWAITING_APPROVAL.name(), ReviewStatus.RUNNING.name());
         // 审批记录落库：两条。
         ArgumentCaptor<Approval> cap = ArgumentCaptor.forClass(Approval.class);
         verify(approvalRepository, org.mockito.Mockito.times(2)).save(cap.capture());
